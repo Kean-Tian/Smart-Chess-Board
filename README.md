@@ -28,9 +28,7 @@ e4. For promotion, add the new piece at the end, such as `e7e8q`.
 
 The `libchess` rules adapter checks normal legal moves as well as check,
 checkmate, stalemate, castling, en passant, promotion, threefold repetition,
-and the 50-move draw rule. Insufficient-material draws are not handled yet. The
-original C rules core is still included for comparison while the adapter is
-being tested.
+and the 50-move draw rule. Insufficient-material draws are not handled yet.
 
 The MCU controller can scan 64 Hall-sensor inputs, debounce them, and follow a
 piece from the square where it was picked up to the square where it was placed.

@@ -53,11 +53,6 @@ target_include_directories(scb_rules PUBLIC include)
 target_link_libraries(scb_rules PUBLIC libchess_vendor)
 target_compile_options(scb_rules PRIVATE -Wall -Wextra -Wpedantic)
 
-# Keep the original C rules core while the libchess adapter is being verified.
-add_library(chess_core src/chess.c)
-target_include_directories(chess_core PUBLIC include)
-target_compile_options(chess_core PRIVATE -Wall -Wextra -Wpedantic)
-
 add_executable(scb_console src/main.c)
 target_link_libraries(scb_console PRIVATE scb_rules)
 set_target_properties(scb_console PROPERTIES LINKER_LANGUAGE CXX)
@@ -70,10 +65,6 @@ if(UNIX)
 endif()
 
 enable_testing()
-add_executable(chess_tests tests/chess_tests.c)
-target_link_libraries(chess_tests PRIVATE chess_core)
-add_test(NAME chess_tests COMMAND chess_tests)
-
 add_executable(libchess_adapter_tests tests/libchess_adapter_tests.c)
 target_link_libraries(libchess_adapter_tests PRIVATE scb_rules)
 set_target_properties(libchess_adapter_tests PROPERTIES LINKER_LANGUAGE CXX)
