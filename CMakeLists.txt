@@ -12,6 +12,12 @@ target_compile_options(chess_core PRIVATE -Wall -Wextra -Wpedantic)
 add_executable(scb_console src/main.cpp)
 target_link_libraries(scb_console PRIVATE chess_core)
 
+if(UNIX)
+	add_executable(scb_pi_uart_bridge pi/src/uart_bridge.cpp)
+	target_link_libraries(scb_pi_uart_bridge PRIVATE chess_core)
+	target_compile_options(scb_pi_uart_bridge PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 enable_testing()
 add_executable(chess_tests tests/chess_tests.cpp)
 target_link_libraries(chess_tests PRIVATE chess_core)

@@ -39,14 +39,17 @@ SCB1 MOVE e2 e4
 
 ## Hardware direction
 
-The Hackster reference separates high-level chess/game decisions on a host from
-low-level stepper, electromagnet, Hall homing, and LED control on a controller.
-`firmware/include/scb/mcu_controller.hpp` defines the platform callbacks for
-button input, Hall inputs, a status LED, and UART output. The controller logic
-is implemented in `firmware/src/mcu_controller.cpp`; a concrete board adapter
-still needs to map those callbacks to the selected MCU SDK and pins.
+The selected architecture uses a Raspberry Pi 4 Model B for high-level game
+logic and a Raspberry Pi Pico 2 for real-time embedded control. The Pi-side
+UART bridge is in `pi/src/uart_bridge.cpp`; it reads sensor/move events from
+`/dev/serial0` and checks physical moves using the chess-rules core.
 
-The MCU model, pinout, Hall sensor polarity, motor driver, LED driver, and
-mechanism limits have not been selected yet. Motor motion, homing, board
-verification, and Raspberry Pi communication commands therefore remain to be
-implemented after those hardware decisions are available.
+The portable controller is in `firmware/src/mcu_controller.cpp`. The Pico 2
+adapter in `firmware/pico/main.cpp` currently runs button-test mode: an external
+button simulates Hall-input changes and UART0 reports them at 115200 baud. See
+`firmware/pico/README.md` for SDK build steps and UART wiring.
+
+The 64 Hall inputs are not connected yet. Their multiplexer/shift-register
+topology, sensor polarity, stepper driver, LED driver, homing switches, and
+mechanical limits still need to be selected before implementing board scanning
+and automatic piece movement.
