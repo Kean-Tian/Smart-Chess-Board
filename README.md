@@ -2,7 +2,8 @@
 
 This repo contains the code for my smart chessboard project. The goal is to use
 a Raspberry Pi 4 for the chess logic and a Raspberry Pi Pico 2 for reading the
-board sensors and controlling the hardware.
+board sensors and controlling the hardware. The Pi-side programs use
+[`libchess`](https://github.com/kz04px/libchess) to check legal moves.
 
 Right now, the project is still a prototype. The chess code and the basic Pico
 input logic work, but the full sensor board and automatic piece movement are
@@ -10,7 +11,8 @@ not connected yet.
 
 ## Build and run
 
-The desktop build only needs CMake and a C17 compiler:
+The desktop build needs CMake, a C17 compiler, a C++20 compiler, and Git. CMake
+downloads the pinned `libchess` version automatically the first time it runs:
 
 ```sh
 cmake -S . -B build
@@ -24,9 +26,11 @@ e4. For promotion, add the new piece at the end, such as `e7e8q`.
 
 ## What works so far
 
-The chess engine checks normal legal moves as well as check, checkmate,
-stalemate, castling, en passant, and promotion. It does not handle threefold
-repetition, the 50-move draw rule, or insufficient-material draws yet.
+The `libchess` rules adapter checks normal legal moves as well as check,
+checkmate, stalemate, castling, en passant, promotion, threefold repetition,
+and the 50-move draw rule. Insufficient-material draws are not handled yet. The
+original C rules core is still included for comparison while the adapter is
+being tested.
 
 The MCU controller can scan 64 Hall-sensor inputs, debounce them, and follow a
 piece from the square where it was picked up to the square where it was placed.
@@ -44,8 +48,8 @@ SCB1 MOVE e2 e4
 ## Raspberry Pi and Pico
 
 The Raspberry Pi side is in `pi/src/uart_bridge.c`. It reads the Pico's UART
-messages from `/dev/serial0` and sends completed moves to the chess engine for
-validation.
+messages from `/dev/serial0` and sends completed moves through the C-compatible
+`libchess` adapter for validation.
 
 The shared controller code is in `firmware/src/mcu_controller.c`, and the Pico
 2 entry point is in `firmware/pico/main.c`. The Pico currently runs in button
