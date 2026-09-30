@@ -1,10 +1,16 @@
 # Smart Chessboard
 
-Portable C++17 starting point for the Smart Chess Board software. The project
-contains a host-side chess rules prototype and a hardware-independent MCU input
-controller that can be tested on a desktop before connecting hardware.
+This repo contains the code for my smart chessboard project. The goal is to use
+a Raspberry Pi 4 for the chess logic and a Raspberry Pi Pico 2 for reading the
+board sensors and controlling the hardware.
 
-## Build
+Right now, the project is still a prototype. The chess code and the basic Pico
+input logic work, but the full sensor board and automatic piece movement are
+not connected yet.
+
+## Build and run
+
+The desktop build only needs CMake and a C17 compiler:
 
 ```sh
 cmake -S . -B build
@@ -13,23 +19,21 @@ ctest --test-dir build --output-on-failure
 ./build/scb_console
 ```
 
-Enter moves in UCI coordinate notation, such as `e2e4`; promotions append a
-piece letter, such as `e7e8q`.
+Moves use UCI coordinates. For example, type `e2e4` to move a piece from e2 to
+e4. For promotion, add the new piece at the end, such as `e7e8q`.
 
-## Current scope
+## What works so far
 
-The rules core validates legal chess moves, including king safety, check,
-checkmate, stalemate, castling, en passant, and promotion. It is a prototype,
-not yet a certified tournament rules engine. Threefold repetition, the
-50-move draw rule, and insufficient-material draws are not implemented.
+The chess engine checks normal legal moves as well as check, checkmate,
+stalemate, castling, en passant, and promotion. It does not handle threefold
+repetition, the 50-move draw rule, or insufficient-material draws yet.
 
-The firmware controller scans 64 abstract Hall inputs, debounces changes,
-tracks a lifted piece until it is placed on another square, and reports sensor
-and move events as UART text lines. Its desktop test uses a push button to
-toggle simulated Hall inputs; this verifies the firmware logic without waiting
-for the physical board.
+The MCU controller can scan 64 Hall-sensor inputs, debounce them, and follow a
+piece from the square where it was picked up to the square where it was placed.
+For now, a push button is used to fake sensor changes, so the firmware logic can
+be tested before the real board is wired up.
 
-UART event examples:
+The UART output looks like this:
 
 ```text
 SCB1 SENSOR e2 0
@@ -37,19 +41,20 @@ SCB1 SENSOR e4 1
 SCB1 MOVE e2 e4
 ```
 
-## Hardware direction
+## Raspberry Pi and Pico
 
-The selected architecture uses a Raspberry Pi 4 Model B for high-level game
-logic and a Raspberry Pi Pico 2 for real-time embedded control. The Pi-side
-UART bridge is in `pi/src/uart_bridge.cpp`; it reads sensor/move events from
-`/dev/serial0` and checks physical moves using the chess-rules core.
+The Raspberry Pi side is in `pi/src/uart_bridge.c`. It reads the Pico's UART
+messages from `/dev/serial0` and sends completed moves to the chess engine for
+validation.
 
-The portable controller is in `firmware/src/mcu_controller.cpp`. The Pico 2
-adapter in `firmware/pico/main.cpp` currently runs button-test mode: an external
-button simulates Hall-input changes and UART0 reports them at 115200 baud. See
-`firmware/pico/README.md` for SDK build steps and UART wiring.
+The shared controller code is in `firmware/src/mcu_controller.c`, and the Pico
+2 entry point is in `firmware/pico/main.c`. The Pico currently runs in button
+test mode and sends messages over UART0 at 115200 baud. Build instructions and
+wiring details are in `firmware/pico/README.md`.
 
-The 64 Hall inputs are not connected yet. Their multiplexer/shift-register
-topology, sensor polarity, stepper driver, LED driver, homing switches, and
-mechanical limits still need to be selected before implementing board scanning
-and automatic piece movement.
+## Still to do
+
+The 64 Hall sensors still need a final multiplexer or shift-register layout.
+The stepper driver, LED driver, homing switches, sensor polarity, and mechanical
+limits also need to be decided before the board can scan real pieces and move
+them automatically.

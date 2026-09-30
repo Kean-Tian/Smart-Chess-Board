@@ -6,8 +6,13 @@
         "${workspaceFolder}/include",
         "${workspaceFolder}/firmware/include"
       ],
-      "compilerPath": "/usr/bin/clang++",
-      "cppStandard": "c++17",
+      "browse": {
+        "path": [
+          "${workspaceFolder}/include",
+          "${workspaceFolder}/firmware/include"
+        ]
+      },
+      "compilerPath": "/usr/bin/clang",
       "cStandard": "c17"
     }
   ],
