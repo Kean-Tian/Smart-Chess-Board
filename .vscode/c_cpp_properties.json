@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "name": "Smart Chessboard",
+      "includePath": [
+        "${workspaceFolder}/include"
+      ],
+      "compilerPath": "/usr/bin/clang++",
+      "cppStandard": "c++17",
+      "cStandard": "c17"
+    }
+  ],
+  "version": 4
+}
