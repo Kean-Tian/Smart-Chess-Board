@@ -16,3 +16,11 @@ enable_testing()
 add_executable(chess_tests tests/chess_tests.cpp)
 target_link_libraries(chess_tests PRIVATE chess_core)
 add_test(NAME chess_tests COMMAND chess_tests)
+
+add_library(mcu_firmware firmware/src/mcu_controller.cpp)
+target_include_directories(mcu_firmware PUBLIC firmware/include)
+target_compile_options(mcu_firmware PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(mcu_controller_tests firmware/tests/mcu_controller_tests.cpp)
+target_link_libraries(mcu_controller_tests PRIVATE mcu_firmware)
+add_test(NAME mcu_controller_tests COMMAND mcu_controller_tests)

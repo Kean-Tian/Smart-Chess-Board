@@ -3,7 +3,8 @@
     {
       "name": "Smart Chessboard",
       "includePath": [
-        "${workspaceFolder}/include"
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/firmware/include"
       ],
       "compilerPath": "/usr/bin/clang++",
       "cppStandard": "c++17",
