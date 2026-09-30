@@ -74,8 +74,14 @@ int main() {
     for (std::uint32_t time = 0; time <= 30; time += 5) buttonController.loop(time);
     buttonBoard.button = true;
     for (std::uint32_t time = 35; time <= 70; time += 5) buttonController.loop(time);
+    buttonBoard.button = false;
     for (std::uint32_t time = 75; time <= 105; time += 5) buttonController.loop(time);
-    require(contains(buttonBoard, "SCB1 SENSOR a1 1"), "button test mode simulates the first Hall input");
+    buttonBoard.button = true;
+    for (std::uint32_t time = 110; time <= 145; time += 5) buttonController.loop(time);
+    for (std::uint32_t time = 150; time <= 180; time += 5) buttonController.loop(time);
+    require(contains(buttonBoard, "SCB1 SENSOR e2 0"), "button test mode simulates lifting the e2 piece");
+    require(contains(buttonBoard, "SCB1 SENSOR e3 1"), "button test mode simulates placing on e3");
+    require(contains(buttonBoard, "SCB1 MOVE e2 e3"), "button test mode runs the move state machine");
 
     std::cout << "All MCU controller tests passed.\n";
 }

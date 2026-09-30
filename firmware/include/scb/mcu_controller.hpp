@@ -36,6 +36,7 @@ private:
     bool buttonInitialized_{};
     bool buttonStable_{};
     bool buttonCandidate_{};
+    bool testMovePending_{};
     std::uint32_t buttonChangedAt_{};
     std::uint8_t testSquare_{};
     int pendingFrom_{-1};

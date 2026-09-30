@@ -14,7 +14,12 @@ void squareName(std::uint8_t square, char (&name)[3]) {
 } // namespace
 
 McuController::McuController(Platform platform, bool buttonTestMode)
-    : platform_(platform), buttonTestMode_(buttonTestMode) {}
+    : platform_(platform), buttonTestMode_(buttonTestMode) {
+    if (buttonTestMode_) {
+        testSquare_ = 12; // e2 is occupied in the standard starting position.
+        testSensors_[testSquare_] = true;
+    }
+}
 
 void McuController::loop(std::uint32_t nowMs) {
     updateButton(nowMs);
@@ -43,8 +48,15 @@ void McuController::updateButton(std::uint32_t nowMs) {
 
     buttonStable_ = buttonCandidate_;
     if (buttonStable_) {
-        testSensors_[testSquare_] = !testSensors_[testSquare_];
-        testSquare_ = static_cast<std::uint8_t>((testSquare_ + 1) % BoardSquareCount);
+        if (!testMovePending_) {
+            testSensors_[testSquare_] = false;
+            testMovePending_ = true;
+        } else {
+            const std::uint8_t destination = static_cast<std::uint8_t>((testSquare_ + 8) % BoardSquareCount);
+            testSensors_[destination] = true;
+            testSquare_ = destination;
+            testMovePending_ = false;
+        }
     }
 }
 
