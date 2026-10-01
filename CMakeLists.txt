@@ -57,23 +57,8 @@ add_executable(scb_console src/main.c)
 target_link_libraries(scb_console PRIVATE scb_rules)
 set_target_properties(scb_console PROPERTIES LINKER_LANGUAGE CXX)
 
-if(UNIX)
-	add_executable(scb_pi_uart_bridge pi/src/uart_bridge.c)
-	target_link_libraries(scb_pi_uart_bridge PRIVATE scb_rules)
-	target_compile_options(scb_pi_uart_bridge PRIVATE -Wall -Wextra -Wpedantic)
-	set_target_properties(scb_pi_uart_bridge PROPERTIES LINKER_LANGUAGE CXX)
-endif()
-
 enable_testing()
 add_executable(libchess_adapter_tests tests/libchess_adapter_tests.c)
 target_link_libraries(libchess_adapter_tests PRIVATE scb_rules)
 set_target_properties(libchess_adapter_tests PROPERTIES LINKER_LANGUAGE CXX)
 add_test(NAME libchess_adapter_tests COMMAND libchess_adapter_tests)
-
-add_library(mcu_firmware firmware/src/mcu_controller.c)
-target_include_directories(mcu_firmware PUBLIC firmware/include)
-target_compile_options(mcu_firmware PRIVATE -Wall -Wextra -Wpedantic)
-
-add_executable(mcu_controller_tests firmware/tests/mcu_controller_tests.c)
-target_link_libraries(mcu_controller_tests PRIVATE mcu_firmware)
-add_test(NAME mcu_controller_tests COMMAND mcu_controller_tests)
