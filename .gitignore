@@ -7,4 +7,6 @@ cmake-build-*/
 *.a
 *.dylib
 *.so
+__pycache__/
+*.pyc
 *.exe

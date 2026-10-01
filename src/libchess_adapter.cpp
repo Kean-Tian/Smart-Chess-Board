@@ -117,4 +117,21 @@ size_t scb_rules_board_text(const ScbRulesGame *game, char *output, size_t capac
     return copy_text(text, output, capacity);
 }
 
+size_t scb_rules_legal_moves(const ScbRulesGame *game, char *output, size_t capacity) {
+    if (game == nullptr) return 0;
+
+    std::string text;
+    for (const libchess::Move &move : game->position.legal_moves()) {
+        if (!text.empty()) text += ' ';
+        if (move.type() == libchess::MoveType::ksc) {
+            text += game->position.turn() == libchess::Side::White ? "e1g1" : "e8g8";
+        } else if (move.type() == libchess::MoveType::qsc) {
+            text += game->position.turn() == libchess::Side::White ? "e1c1" : "e8c8";
+        } else {
+            text += static_cast<std::string>(move);
+        }
+    }
+    return copy_text(text, output, capacity);
+}
+
 }  // extern "C"

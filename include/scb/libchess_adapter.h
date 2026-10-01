@@ -29,6 +29,7 @@ bool scb_rules_is_draw(const ScbRulesGame *game);
 
 size_t scb_rules_fen(const ScbRulesGame *game, char *output, size_t capacity);
 size_t scb_rules_board_text(const ScbRulesGame *game, char *output, size_t capacity);
+size_t scb_rules_legal_moves(const ScbRulesGame *game, char *output, size_t capacity);
 
 #ifdef __cplusplus
 }

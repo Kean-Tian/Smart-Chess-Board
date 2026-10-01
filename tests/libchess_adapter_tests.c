@@ -20,6 +20,10 @@ int main(void) {
     require(game != NULL, "create libchess game");
     require(scb_rules_is_legal_move(game, "e2e4"), "accept legal opening move");
     require(!scb_rules_is_legal_move(game, "e2e5"), "reject illegal pawn move");
+    char legal_moves[2048];
+    require(scb_rules_legal_moves(game, legal_moves, sizeof(legal_moves)) > 0, "list legal moves");
+    require(strstr(legal_moves, "e2e4") != NULL, "list opening move");
+    require(strstr(legal_moves, "e2e5") == NULL, "exclude illegal opening move");
     play(game, "e2e4");
     require(!scb_rules_is_legal_move(game, "d2d4"), "reject move by the wrong side");
     play(game, "e7e5");
@@ -43,7 +47,13 @@ int main(void) {
     require(special != NULL, "create special-moves game");
     const char *moves[] = {"e2e4", "a7a6", "e4e5", "d7d5", "e5d6", "e7e6",
                            "g1f3", "g8f6", "f1e2", "f8e7", "e1g1"};
-    for (size_t index = 0; index < sizeof(moves) / sizeof(moves[0]); ++index) play(special, moves[index]);
+    for (size_t index = 0; index < sizeof(moves) / sizeof(moves[0]); ++index) {
+        if (index == sizeof(moves) / sizeof(moves[0]) - 1) {
+            require(scb_rules_legal_moves(special, legal_moves, sizeof(legal_moves)) > 0, "list castle");
+            require(strstr(legal_moves, "e1g1") != NULL, "use normal UCI castling move");
+        }
+        play(special, moves[index]);
+    }
     char fen[128];
     require(scb_rules_fen(special, fen, sizeof(fen)) > 0, "export FEN");
     require(strstr(fen, " b ") != NULL, "FEN reports black to move");

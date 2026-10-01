@@ -19,6 +19,22 @@ ctest --test-dir build --output-on-failure
 Moves use UCI coordinates. For example, type `e2e4` to move a piece from e2 to
 e4. For promotion, add the new piece at the end, such as `e7e8q`.
 
+## Play against AI
+
+This mode also needs Python 3. Build the project as above, then set your OpenAI
+API key in the terminal and run:
+
+```sh
+export OPENAI_API_KEY="your-api-key"
+python3 scripts/play_ai.py
+```
+
+You play White. Enter moves such as `e2e4`; the AI plays Black after each legal move.
+Enter `quit` to stop. The API is called once per AI turn, so an API key with
+available usage is required. `OPENAI_MODEL` can override the default
+`gpt-4.1-mini` model. The API key is read from the environment and is never
+stored in the repository.
+
 ## What works so far
 
 The `libchess` rules adapter checks normal legal moves as well as check,
