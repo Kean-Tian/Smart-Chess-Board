@@ -40,3 +40,16 @@ stored in the repository.
 The `libchess` rules adapter checks normal legal moves as well as check,
 checkmate, stalemate, castling, en passant, promotion, threefold repetition,
 and the 50-move draw rule. Insufficient-material draws are not handled yet.
+
+Work on the MCU input controller has started. The current prototype contains
+the basic structure for scanning 64 Hall sensors, debouncing their readings,
+detecting a lift-and-place move, sending text events to UART, and simulating a
+move with test buttons. The real Pico 2 GPIO and UART drivers still need to be
+connected.
+
+## Next steps
+
+- Flash the input-controller firmware onto the Pico 2.
+- Deploy the chess rules and AI program to the Raspberry Pi 4B.
+- Connect the Raspberry Pi 4B and Pico 2 through UART, then test that physical
+  moves can reach the main chess program correctly.

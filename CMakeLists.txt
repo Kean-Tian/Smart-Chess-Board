@@ -54,6 +54,11 @@ target_include_directories(scb_rules PUBLIC include)
 target_link_libraries(scb_rules PUBLIC libchess_vendor)
 target_compile_options(scb_rules PRIVATE -Wall -Wextra -Wpedantic)
 
+# 这部分还是 MCU 原型，目前先在电脑上检查基础逻辑能不能编译。
+add_library(mcu_input_prototype STATIC firmware/pico2/input_controller.c)
+target_include_directories(mcu_input_prototype PUBLIC firmware/pico2)
+target_compile_options(mcu_input_prototype PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(scb_console src/main.c)
 target_link_libraries(scb_console PRIVATE scb_rules)
 set_target_properties(scb_console PROPERTIES LINKER_LANGUAGE CXX)

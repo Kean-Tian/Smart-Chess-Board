@@ -5,6 +5,7 @@
 #include <string.h>
 
 static void require(bool condition, const char *message) {
+    // 只要有一项不对，就马上停止并告诉我是哪项失败。
     if (!condition) {
         fprintf(stderr, "FAIL: %s\n", message);
         exit(1);
@@ -12,10 +13,12 @@ static void require(bool condition, const char *message) {
 }
 
 static void play(ScbRulesGame *game, const char *uci) {
+    // 测试里的每一步都应该合法，所以这里直接用 require 检查。
     require(scb_rules_play_move(game, uci), uci);
 }
 
 int main(void) {
+    // 先测最基本的走法、非法走法和回合顺序。
     ScbRulesGame *game = scb_rules_create();
     require(game != NULL, "create libchess game");
     require(scb_rules_is_legal_move(game, "e2e4"), "accept legal opening move");
@@ -33,6 +36,7 @@ int main(void) {
     require(strstr(board, "White to move") != NULL, "report side to move");
     scb_rules_destroy(game);
 
+    // 用最短的愚人将杀来测试将军和将死。
     ScbRulesGame *mate = scb_rules_create();
     require(mate != NULL, "create checkmate game");
     play(mate, "f2f3");
@@ -43,6 +47,7 @@ int main(void) {
     require(scb_rules_is_checkmate(mate), "detect checkmate");
     scb_rules_destroy(mate);
 
+    // 这组走法顺便覆盖吃过路兵和王车易位。
     ScbRulesGame *special = scb_rules_create();
     require(special != NULL, "create special-moves game");
     const char *moves[] = {"e2e4", "a7a6", "e4e5", "d7d5", "e5d6", "e7e6",
@@ -59,6 +64,7 @@ int main(void) {
     require(strstr(fen, " b ") != NULL, "FEN reports black to move");
     scb_rules_destroy(special);
 
+    // 让白兵一路走到底，确认它能升变成后。
     ScbRulesGame *promotion = scb_rules_create();
     require(promotion != NULL, "create promotion game");
     const char *promotion_moves[] = {"a2a4", "h7h5", "a4a5", "h5h4", "a5a6",
@@ -68,6 +74,7 @@ int main(void) {
     }
     scb_rules_destroy(promotion);
 
+    // 两边的马来回走，检查三次重复局面能不能判和。
     ScbRulesGame *draw = scb_rules_create();
     require(draw != NULL, "create repetition game");
     const char *repetition[] = {"g1f3", "g8f6", "f3g1", "f6g8",

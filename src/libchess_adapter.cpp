@@ -7,12 +7,14 @@
 #include <new>
 #include <string>
 
+// 真正的 libchess 棋盘藏在这里，C 文件只会看到一个指针。
 struct ScbRulesGame {
     libchess::Position position{"startpos"};
 };
 
 namespace {
 
+// 把 C++ 字符串交给 C 使用，空间不够时就直接返回失败。
 size_t copy_text(const std::string &text, char *output, size_t capacity) {
     if (output == nullptr || capacity == 0 || text.size() + 1 > capacity) {
         if (output != nullptr && capacity > 0) output[0] = '\0';
@@ -28,6 +30,7 @@ char piece_character(const libchess::Position &position, int square) {
     const libchess::Piece piece = position.piece_on(location);
     if (piece == libchess::Piece::None) return '.';
 
+    // 白棋显示成大写，黑棋显示成小写，看起来更直观。
     char symbol = symbols[static_cast<int>(piece)];
     if (position.occupancy(libchess::Side::White).get(location)) {
         symbol = static_cast<char>(std::toupper(static_cast<unsigned char>(symbol)));
@@ -35,14 +38,16 @@ char piece_character(const libchess::Position &position, int square) {
     return symbol;
 }
 
-}  // namespace
+}  
 
+// 从这里开始都是给 C 文件调用的接口。
 extern "C" {
 
 ScbRulesGame *scb_rules_create(void) {
     try {
         return new ScbRulesGame;
     } catch (...) {
+        // 创建失败时不让异常跑进 C 代码，用空指针表示失败。
         return nullptr;
     }
 }
@@ -54,6 +59,7 @@ void scb_rules_destroy(ScbRulesGame *game) {
 bool scb_rules_is_legal_move(const ScbRulesGame *game, const char *uci) {
     if (game == nullptr || uci == nullptr) return false;
     try {
+        // parse_move 找不到这个合法走法时会报错。
         (void)game->position.parse_move(uci);
         return true;
     } catch (...) {
@@ -64,6 +70,7 @@ bool scb_rules_is_legal_move(const ScbRulesGame *game, const char *uci) {
 bool scb_rules_play_move(ScbRulesGame *game, const char *uci) {
     if (game == nullptr || uci == nullptr) return false;
     try {
+        // 先让 libchess 检查，确认没问题后再更新棋盘。
         const libchess::Move move = game->position.parse_move(uci);
         game->position.makemove(move);
         return true;
@@ -103,6 +110,7 @@ size_t scb_rules_board_text(const ScbRulesGame *game, char *output, size_t capac
 
     std::string text;
     text.reserve(160);
+    // 从第八行往下打印，就是平常看到的白方视角。
     for (int rank = 7; rank >= 0; --rank) {
         text += static_cast<char>('1' + rank);
         text += ' ';
