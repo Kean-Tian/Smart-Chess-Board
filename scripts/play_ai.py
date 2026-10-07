@@ -1,66 +1,12 @@
 #!/usr/bin/env python3
 """Play White against an OpenAI-powered Black using the project's rules engine."""
 
-import ctypes
 import json
 import os
-from pathlib import Path
 import sys
 from urllib import error, request
 
-#link to the chess engine 
-ROOT = Path(__file__).resolve().parents[1]
-LIBRARY = ROOT / "build" / ("libscb_rules.dylib" if sys.platform == "darwin" else "libscb_rules.so")
-
-# Using Ctypes to interface with the chess rules engine
-class Game:
-    def __init__(self):
-        rules = ctypes.CDLL(str(LIBRARY))
-        rules.scb_rules_create.restype = ctypes.c_void_p
-        rules.scb_rules_destroy.argtypes = [ctypes.c_void_p]
-        for name in ("scb_rules_is_legal_move", "scb_rules_play_move"):
-            function = getattr(rules, name)
-            function.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-            function.restype = ctypes.c_bool
-        for name in ("scb_rules_fen", "scb_rules_board_text", "scb_rules_legal_moves"):
-            function = getattr(rules, name)
-            function.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
-            function.restype = ctypes.c_size_t
-        for name in ("scb_rules_is_checkmate", "scb_rules_is_stalemate", "scb_rules_is_draw", "scb_rules_is_in_check"):
-            function = getattr(rules, name)
-            function.argtypes = [ctypes.c_void_p]
-            function.restype = ctypes.c_bool
-        self.rules = rules
-        self.handle = rules.scb_rules_create()
-        if not self.handle:
-            raise RuntimeError("Could not create the chess rules engine.")
-
-#package to close the chess engine when done
-    def close(self):
-        self.rules.scb_rules_destroy(self.handle)
-
-    def text(self, name, size):
-        buffer = ctypes.create_string_buffer(size)
-        if not getattr(self.rules, name)(self.handle, buffer, size):
-            raise RuntimeError(f"Could not read {name} from the rules engine.")
-        return buffer.value.decode("ascii")
-
-    def play(self, move):
-        try:
-            return self.rules.scb_rules_play_move(self.handle, move.encode("ascii"))
-        except UnicodeEncodeError:
-            return False
-
-    def status(self):
-        if self.rules.scb_rules_is_checkmate(self.handle):
-            return "Checkmate. White wins." if self.text("scb_rules_fen", 128).split()[1] == "b" else "Checkmate. Black wins."
-        if self.rules.scb_rules_is_stalemate(self.handle):
-            return "Stalemate."
-        if self.rules.scb_rules_is_draw(self.handle):
-            return "Draw by repetition or the 50-move rule."
-        if self.rules.scb_rules_is_in_check(self.handle):
-            return "Check."
-        return ""
+from scb_rules import Game, LIBRARY
 
 # function to ask the AI for its move based on the current FEN and legal moves
 # FEN UCI -> Json -> API request -> JSON response -> move

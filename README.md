@@ -1,55 +1,149 @@
-# Smart Chessboard
+# Raspberry Pi 5 Sensor Matrix Interface
 
-This repo contains a local command-line prototype for my smart chessboard
-project. It uses [`libchess`](https://github.com/kz04px/libchess) to keep track
-of the position and check whether each move is legal.
+This component provides the following functionality:
+
+1. Configures the Raspberry Pi 5 GPIO pins.
+2. Selects eight sensor rows through a 74HCT138 and reads eight comparator outputs.
+3. Scans the complete 8×8 Hall-sensor matrix with square mapping, settling delays, and debouncing.
+4. Detects piece lifts, returns, placements, normal moves, and captures.
+5. Prints sensor status and detected moves in the terminal.
+6. Provides automated tests and a physical-hardware test procedure.
+
+## GPIO pin assignment
+
+The program uses BCM GPIO numbering:
+
+| Circuit signal | BCM GPIO | Physical pin | Direction |
+| --- | ---: | ---: | --- |
+| 74HCT138 A0 / MUX_IN1 | GPIO17 | 11 | Output |
+| 74HCT138 A1 / MUX_IN2 | GPIO27 | 13 | Output |
+| 74HCT138 A2 / MUX_IN3 | GPIO22 | 15 | Output |
+| 74HCT138 G1 / ROW_ENABLE | GPIO23 | 16 | Output |
+| Comparator COL1 / file a | GPIO5 | 29 | Input |
+| Comparator COL2 / file b | GPIO6 | 31 | Input |
+| Comparator COL3 / file c | GPIO12 | 32 | Input |
+| Comparator COL4 / file d | GPIO13 | 33 | Input |
+| Comparator COL5 / file e | GPIO16 | 36 | Input |
+| Comparator COL6 / file f | GPIO19 | 35 | Input |
+| Comparator COL7 / file g | GPIO20 | 38 | Input |
+| Comparator COL8 / file h | GPIO21 | 40 | Input |
+
+By default, 74HCT138 output Y0 maps to board rank 1 and Y7 maps to rank 8.
+COL1 maps to file `a`, and COL8 maps to file `h`. The first matrix element is
+therefore `a1`, and the last element is `h8`.
+
+## Electrical requirements
+
+- Use a **74HCT138**. A 74HC138 powered from 5 V may not reliably recognize the
+  Raspberry Pi's 3.3 V high level.
+- The eight comparator outputs must connect individually to the eight configured
+  GPIO inputs.
+- Raspberry Pi GPIO inputs are not 5 V tolerant. If an LM324 is powered from
+  5 V, its output must not connect directly to a Pi GPIO. Use reliable 3.3 V
+  level conversion, or use open-collector comparators pulled up to 3.3 V.
+- The Raspberry Pi, 74HCT138, sensors, and comparators must share a common ground.
+
+## Raspberry Pi setup
+
+Install the compiler, CMake, and libgpiod development files:
+
+```sh
+sudo apt update
+sudo apt install cmake build-essential pkg-config libgpiod-dev gpiod git
+```
+
+Identify the GPIO chip associated with the RP1 controller:
+
+```sh
+gpiodetect
+```
+
+The default user normally has GPIO access. If another account needs access, add
+it to the `gpio` group and then log in again:
+
+```sh
+sudo usermod -aG gpio "$USER"
+```
 
 ## Build and run
 
-The desktop build needs CMake, a C17 compiler, a C++20 compiler, and Git. CMake
-downloads the pinned `libchess` version automatically the first time it runs:
+Build the project:
 
 ```sh
 cmake -S . -B build
 cmake --build build
-ctest --test-dir build --output-on-failure
-./build/scb_console
 ```
 
-Moves use UCI coordinates. For example, type `e2e4` to move a piece from e2 to
-e4. For promotion, add the new piece at the end, such as `e7e8q`.
-
-## Play against AI
-
-This mode also needs Python 3. Build the project as above, then set your OpenAI
-API key in the terminal and run:
+Run the sensor interface using `/dev/gpiochip0` and the default pins:
 
 ```sh
-export OPENAI_API_KEY="your-api-key"
-python3 scripts/play_ai.py
+./build/scb_hardware
 ```
 
-You play White. Enter moves such as `e2e4`; the AI plays Black after each legal move.
-Enter `quit` to stop. The API is called once per AI turn, so an API key with
-available usage is required. `OPENAI_MODEL` can override the default
-`gpt-4.1-mini` model. The API key is read from the environment and is never
-stored in the repository.
+Common configuration examples:
 
-## What works so far
+```sh
+# A low comparator output means that the square is occupied.
+./build/scb_hardware --columns-active-low
 
-The `libchess` rules adapter checks normal legal moves as well as check,
-checkmate, stalemate, castling, en passant, promotion, threefold repetition,
-and the 50-move draw rule. Insufficient-material draws are not handled yet.
+# Increase the sensor settling delay to 2 ms.
+./build/scb_hardware --sensor-settle-us 2000
 
-Work on the MCU input controller has started. The current prototype contains
-the basic structure for scanning 64 Hall sensors, debouncing their readings,
-detecting a lift-and-place move, sending text events to UART, and simulating a
-move with test buttons. The real Pico 2 GPIO and UART drivers still need to be
-connected.
+# Use a different GPIO chip.
+./build/scb_hardware --gpiochip /dev/gpiochip4
 
-## Next steps
+# Override the GPIO assignments.
+./build/scb_hardware \
+  --address-pins 17,27,22 \
+  --row-enable-pin 23 \
+  --column-pins 5,6,12,13,16,19,20,21
+```
 
-- Flash the input-controller firmware onto the Pico 2.
-- Deploy the chess rules and AI program to the Raspberry Pi 4B.
-- Connect the Raspberry Pi 4B and Pico 2 through UART, then test that physical
-  moves can reach the main chess program correctly.
+The default configuration waits 1 ms after enabling each sensor row and waits
+20 ms after every complete matrix scan. A new board state is accepted only
+after three identical 64-square scans.
+
+Terminal messages include:
+
+- `LIFT e2`: a piece was lifted from e2.
+- `RETURN e2`: the piece was returned to e2.
+- `PLACE e4`: a piece was placed directly on e4.
+- `MOVE e2e4`: a move from e2 to e4 was detected.
+
+Hall sensors report occupancy only; they cannot identify piece types. During a
+capture, the destination square must be observed empty for at least one stable
+scan. Otherwise, the destination cannot be determined from final occupancy alone.
+
+## Automated tests
+
+The sensor-matrix tests do not require GPIO hardware:
+
+```sh
+cmake -S . -B build
+cmake --build build
+./build/sensor_matrix_tests
+```
+
+The tests cover 74HCT138 row scanning, 64-square mapping, comparator polarity,
+debouncing, lift and return detection, normal moves, and captures.
+
+Run all configured tests with:
+
+```sh
+ctest --test-dir build --output-on-failure
+```
+
+## Physical hardware test procedure
+
+1. With the Pi disconnected, measure all eight comparator outputs and verify
+   that they never exceed 3.3 V.
+2. Start with an empty board and confirm that the terminal reports
+   `READY 0 PIECES`.
+3. Place one piece on `a1`, `h1`, `a8`, and `h8` to verify board orientation.
+4. Test every square to confirm that all 64 sensors are detected reliably.
+5. Test lift, return, placement, normal-move, and capture sequences.
+6. If readings are unstable, increase `--sensor-settle-us` or
+   `--debounce-reads`.
+
+The final calibration and physical tests must be completed after the sensor
+board is connected to the Raspberry Pi 5.
