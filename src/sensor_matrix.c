@@ -17,14 +17,13 @@ void scb_sensor_matrix_defaults(ScbSensorMatrix *matrix, ScbGpioOps gpio) {
     memset(matrix, 0, sizeof(*matrix));
     matrix->gpio = gpio;
     memcpy(matrix->address_pins, address_pins, sizeof(address_pins));
-    matrix->enable_pin = 23U;
     memcpy(matrix->column_pins, column_pins, sizeof(column_pins));
     matrix->address_settle_us = 10U;
     matrix->sensor_settle_us = 1000U;
 }
 
 int scb_sensor_matrix_validate(const ScbSensorMatrix *matrix) {
-    unsigned int pins[12];
+    unsigned int pins[11];
     size_t count = 0U;
     if (matrix == NULL || matrix->gpio.write == NULL ||
         matrix->gpio.read_columns == NULL || matrix->gpio.sleep_us == NULL) {
@@ -34,7 +33,6 @@ int scb_sensor_matrix_validate(const ScbSensorMatrix *matrix) {
     for (size_t index = 0U; index < 3U; ++index) {
         pins[count++] = matrix->address_pins[index];
     }
-    pins[count++] = matrix->enable_pin;
     for (size_t index = 0U; index < SCB_BOARD_COLUMNS; ++index) {
         pins[count++] = matrix->column_pins[index];
     }
@@ -55,9 +53,6 @@ int scb_sensor_matrix_validate(const ScbSensorMatrix *matrix) {
 
 int scb_sensor_matrix_initialize(ScbSensorMatrix *matrix) {
     if (scb_sensor_matrix_validate(matrix) < 0) return -1;
-    if (matrix->gpio.write(matrix->gpio.context, matrix->enable_pin, false) < 0) {
-        return -1;
-    }
     for (size_t index = 0U; index < 3U; ++index) {
         if (matrix->gpio.write(matrix->gpio.context,
                                matrix->address_pins[index], false) < 0) {
@@ -65,12 +60,6 @@ int scb_sensor_matrix_initialize(ScbSensorMatrix *matrix) {
         }
     }
     return 0;
-}
-
-void scb_sensor_matrix_disable(ScbSensorMatrix *matrix) {
-    if (matrix != NULL && matrix->gpio.write != NULL) {
-        (void)matrix->gpio.write(matrix->gpio.context, matrix->enable_pin, false);
-    }
 }
 
 int scb_sensor_matrix_scan(ScbSensorMatrix *matrix,
@@ -81,11 +70,6 @@ int scb_sensor_matrix_scan(ScbSensorMatrix *matrix,
     memset(occupied, 0, sizeof(bool) * SCB_BOARD_SQUARES);
 
     for (unsigned int row = 0U; row < SCB_BOARD_ROWS; ++row) {
-        if (matrix->gpio.write(matrix->gpio.context,
-                               matrix->enable_pin, false) < 0) {
-            result = -1;
-            break;
-        }
         for (unsigned int bit = 0U; bit < 3U; ++bit) {
             bool high = (row & (1U << bit)) != 0U;
             if (matrix->gpio.write(matrix->gpio.context,
@@ -96,11 +80,6 @@ int scb_sensor_matrix_scan(ScbSensorMatrix *matrix,
         }
         if (result < 0) break;
         matrix->gpio.sleep_us(matrix->gpio.context, matrix->address_settle_us);
-        if (matrix->gpio.write(matrix->gpio.context,
-                               matrix->enable_pin, true) < 0) {
-            result = -1;
-            break;
-        }
         matrix->gpio.sleep_us(matrix->gpio.context, matrix->sensor_settle_us);
         if (matrix->gpio.read_columns(matrix->gpio.context,
                                       matrix->column_pins, levels) < 0) {
@@ -112,7 +91,6 @@ int scb_sensor_matrix_scan(ScbSensorMatrix *matrix,
             occupied[row * SCB_BOARD_COLUMNS + column] = detected;
         }
     }
-    scb_sensor_matrix_disable(matrix);
     return result;
 }
 

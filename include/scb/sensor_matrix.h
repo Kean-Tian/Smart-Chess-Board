@@ -20,7 +20,6 @@ typedef struct {
 typedef struct {
     ScbGpioOps gpio;
     unsigned int address_pins[3];
-    unsigned int enable_pin;
     unsigned int column_pins[SCB_BOARD_COLUMNS];
     bool columns_active_low;
     unsigned int address_settle_us;
@@ -32,7 +31,6 @@ int scb_sensor_matrix_validate(const ScbSensorMatrix *matrix);
 int scb_sensor_matrix_initialize(ScbSensorMatrix *matrix);
 int scb_sensor_matrix_scan(ScbSensorMatrix *matrix,
                            bool occupied[SCB_BOARD_SQUARES]);
-void scb_sensor_matrix_disable(ScbSensorMatrix *matrix);
 
 typedef struct {
     unsigned int required_reads;

@@ -53,9 +53,9 @@ static int backend_open(GpiodBackend *backend, const char *chip_path,
     struct gpiod_line_settings *input_settings = NULL;
     struct gpiod_line_config *line_config = NULL;
     struct gpiod_request_config *request_config = NULL;
-    unsigned int outputs[4] = {
+    unsigned int outputs[3] = {
         matrix->address_pins[0], matrix->address_pins[1],
-        matrix->address_pins[2], matrix->enable_pin
+        matrix->address_pins[2]
     };
     int result = -1;
     memset(backend, 0, sizeof(*backend));
@@ -73,7 +73,7 @@ static int backend_open(GpiodBackend *backend, const char *chip_path,
         gpiod_line_settings_set_output_value(
             output_settings, GPIOD_LINE_VALUE_INACTIVE) < 0 ||
         gpiod_line_config_add_line_settings(
-            line_config, outputs, 4U, output_settings) < 0 ||
+            line_config, outputs, 3U, output_settings) < 0 ||
         gpiod_line_settings_set_direction(
             input_settings, GPIOD_LINE_DIRECTION_INPUT) < 0 ||
         gpiod_line_settings_set_bias(
@@ -122,7 +122,7 @@ static int backend_read_columns(
 
 typedef struct {
     struct gpiod_chip *chip;
-    struct gpiod_line *outputs[4];
+    struct gpiod_line *outputs[3];
     struct gpiod_line *inputs[SCB_BOARD_COLUMNS];
     size_t requested_outputs;
     size_t requested_inputs;
@@ -145,14 +145,14 @@ static void backend_close(GpiodBackend *backend) {
 
 static int backend_open(GpiodBackend *backend, const char *chip_path,
                         const ScbSensorMatrix *matrix) {
-    unsigned int output_offsets[4] = {
+    unsigned int output_offsets[3] = {
         matrix->address_pins[0], matrix->address_pins[1],
-        matrix->address_pins[2], matrix->enable_pin
+        matrix->address_pins[2]
     };
     memset(backend, 0, sizeof(*backend));
     backend->chip = gpiod_chip_open(chip_path);
     if (backend->chip == NULL) return -1;
-    for (size_t index = 0U; index < 4U; ++index) {
+    for (size_t index = 0U; index < 3U; ++index) {
         backend->outputs[index] =
             gpiod_chip_get_line(backend->chip, output_offsets[index]);
         if (backend->outputs[index] == NULL ||
@@ -218,8 +218,7 @@ static void print_usage(const char *program) {
     printf(
         "Usage: %s [options]\n"
         "  --gpiochip PATH             GPIO chip (default /dev/gpiochip0)\n"
-        "  --address-pins A0,A1,A2     74HCT138 address GPIOs\n"
-        "  --row-enable-pin GPIO       74HCT138 G1 GPIO\n"
+        "  --address-pins A0,A1,A2     74HC138 address GPIOs\n"
         "  --column-pins C1,...,C8     Eight comparator GPIOs\n"
         "  --columns-active-low        Low means occupied\n"
         "  --address-settle-us N       Decoder delay (default 10)\n"
@@ -264,7 +263,6 @@ int main(int argc, char **argv) {
     enum {
         OPT_GPIOCHIP = 1000,
         OPT_ADDRESS_PINS,
-        OPT_ROW_ENABLE,
         OPT_COLUMN_PINS,
         OPT_ACTIVE_LOW,
         OPT_ADDRESS_SETTLE,
@@ -275,7 +273,6 @@ int main(int argc, char **argv) {
     static const struct option options[] = {
         {"gpiochip", required_argument, NULL, OPT_GPIOCHIP},
         {"address-pins", required_argument, NULL, OPT_ADDRESS_PINS},
-        {"row-enable-pin", required_argument, NULL, OPT_ROW_ENABLE},
         {"column-pins", required_argument, NULL, OPT_COLUMN_PINS},
         {"columns-active-low", no_argument, NULL, OPT_ACTIVE_LOW},
         {"address-settle-us", required_argument, NULL, OPT_ADDRESS_SETTLE},
@@ -307,10 +304,6 @@ int main(int argc, char **argv) {
                 break;
             case OPT_ADDRESS_PINS:
                 if (parse_pin_list(optarg, matrix.address_pins, 3U) < 0) goto invalid;
-                break;
-            case OPT_ROW_ENABLE:
-                if (parse_unsigned(optarg, &matrix.enable_pin) < 0 ||
-                    matrix.enable_pin > 53U) goto invalid;
                 break;
             case OPT_COLUMN_PINS:
                 if (parse_pin_list(optarg, matrix.column_pins,
@@ -375,7 +368,6 @@ int main(int argc, char **argv) {
     exit_code = 0;
 
 cleanup:
-    scb_sensor_matrix_disable(&matrix);
     backend_close(&backend);
     return exit_code;
 

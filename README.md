@@ -3,7 +3,7 @@
 This component provides the following functionality:
 
 1. Configures the Raspberry Pi 5 GPIO pins.
-2. Selects eight sensor rows through a 74HCT138 and reads eight comparator outputs.
+2. Selects eight sensor rows through a 74HC138 and reads eight LM324 outputs directly.
 3. Scans the complete 8×8 Hall-sensor matrix with square mapping, settling delays, and debouncing.
 4. Detects piece lifts, returns, placements, normal moves, and captures.
 5. Prints sensor status and detected moves in the terminal.
@@ -15,33 +15,45 @@ The program uses BCM GPIO numbering:
 
 | Circuit signal | BCM GPIO | Physical pin | Direction |
 | --- | ---: | ---: | --- |
-| 74HCT138 A0 / MUX_IN1 | GPIO17 | 11 | Output |
-| 74HCT138 A1 / MUX_IN2 | GPIO27 | 13 | Output |
-| 74HCT138 A2 / MUX_IN3 | GPIO22 | 15 | Output |
-| 74HCT138 G1 / ROW_ENABLE | GPIO23 | 16 | Output |
-| Comparator COL1 / file a | GPIO5 | 29 | Input |
-| Comparator COL2 / file b | GPIO6 | 31 | Input |
-| Comparator COL3 / file c | GPIO12 | 32 | Input |
-| Comparator COL4 / file d | GPIO13 | 33 | Input |
-| Comparator COL5 / file e | GPIO16 | 36 | Input |
-| Comparator COL6 / file f | GPIO19 | 35 | Input |
-| Comparator COL7 / file g | GPIO20 | 38 | Input |
-| Comparator COL8 / file h | GPIO21 | 40 | Input |
+| 74HC138 A0 / MUX_IN1 | GPIO17 | 11 | Output |
+| 74HC138 A1 / MUX_IN2 | GPIO27 | 13 | Output |
+| 74HC138 A2 / MUX_IN3 | GPIO22 | 15 | Output |
+| LM324 ENC_IN1 / file a | GPIO5 | 29 | Input |
+| LM324 ENC_IN2 / file b | GPIO6 | 31 | Input |
+| LM324 ENC_IN3 / file c | GPIO12 | 32 | Input |
+| LM324 ENC_IN4 / file d | GPIO13 | 33 | Input |
+| LM324 ENC_IN5 / file e | GPIO16 | 36 | Input |
+| LM324 ENC_IN6 / file f | GPIO19 | 35 | Input |
+| LM324 ENC_IN7 / file g | GPIO20 | 38 | Input |
+| LM324 ENC_IN8 / file h | GPIO21 | 40 | Input |
 
-By default, 74HCT138 output Y0 maps to board rank 1 and Y7 maps to rank 8.
+In the schematic, the 74HC138 active-low enable inputs (pins 4 and 5) are tied
+to GND and its active-high enable input (pin 6) is tied to +5 V. The Pi drives
+only A0, A1, and A2; GPIO23 is unused. Y0 maps to board rank 1 and Y7 maps to
+rank 8.
 COL1 maps to file `a`, and COL8 maps to file `h`. The first matrix element is
 therefore `a1`, and the last element is `h8`.
 
 ## Electrical requirements
 
-- Use a **74HCT138**. A 74HC138 powered from 5 V may not reliably recognize the
-  Raspberry Pi's 3.3 V high level.
-- The eight comparator outputs must connect individually to the eight configured
-  GPIO inputs.
+- The schematic uses a **74HC138** powered from 5 V. Its A0/A1/A2 inputs need
+  guaranteed 5 V logic highs. Add a suitable 3.3 V-to-5 V logic buffer between
+  the Pi and those inputs; direct 3.3 V drive is not guaranteed by the HC
+  input specifications.
+- Connect LM324 outputs `ENC_IN1` through `ENC_IN8` individually to the eight
+  configured Pi inputs, after 3.3 V level protection. Do not feed the Pi from
+  the 74LS147 priority encoder: it loses information when multiple columns
+  are active at once.
+- The LM324 compares each `HE_COL` voltage against the circuit's 1.5 V
+  reference. The Pi reads the resulting digital levels; there is no Pi ADC or
+  software voltage threshold. Because the reference is on the noninverting
+  input, an `HE_COL` voltage below 1.5 V should drive the output high, subject
+  to the LM324's output limits. Which magnetic pole produces that voltage must
+  be confirmed on the assembled sensor board.
 - Raspberry Pi GPIO inputs are not 5 V tolerant. If an LM324 is powered from
   5 V, its output must not connect directly to a Pi GPIO. Use reliable 3.3 V
   level conversion, or use open-collector comparators pulled up to 3.3 V.
-- The Raspberry Pi, 74HCT138, sensors, and comparators must share a common ground.
+- The Raspberry Pi, 74HC138, sensors, and comparators must share a common ground.
 
 ## Raspberry Pi setup
 
@@ -95,13 +107,15 @@ Common configuration examples:
 # Override the GPIO assignments.
 ./build/scb_hardware \
   --address-pins 17,27,22 \
-  --row-enable-pin 23 \
   --column-pins 5,6,12,13,16,19,20,21
 ```
 
-The default configuration waits 1 ms after enabling each sensor row and waits
+The default configuration waits 1 ms after selecting each sensor row and waits
 20 ms after every complete matrix scan. A new board state is accepted only
 after three identical 64-square scans.
+
+The default software interpretation is `ENC_IN` high = occupied. If your
+measured comparator polarity is the opposite, run with `--columns-active-low`.
 
 Terminal messages include:
 
@@ -124,8 +138,22 @@ cmake --build build
 ./build/sensor_matrix_tests
 ```
 
-The tests cover 74HCT138 row scanning, 64-square mapping, comparator polarity,
-debouncing, lift and return detection, normal moves, and captures.
+The tests cover the 74HC138 address sequence, simultaneous active columns,
+64-square mapping, comparator polarity, debouncing, lift and return detection,
+normal moves, and captures.
+
+To demonstrate the behavior without a Raspberry Pi or sensor board, run:
+
+```sh
+cmake -S . -B build
+cmake --build build --target sensor_matrix_demo
+./build/sensor_matrix_demo
+```
+
+This C program prints the eight row addresses, separate column readings, the
+three-read debounce sequence, and terminal events for placement, lift, return,
+normal movement, and capture. It uses simulated GPIO; it does not validate the
+physical wiring, voltage levels, comparator threshold, or sensor timing.
 
 Run all configured tests with:
 

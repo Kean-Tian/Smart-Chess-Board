@@ -8,7 +8,9 @@ typedef struct {
     bool levels[54];
     bool rows[SCB_BOARD_ROWS][SCB_BOARD_COLUMNS];
     unsigned int sleep_calls;
-    bool closed;
+    unsigned int read_rows[SCB_BOARD_ROWS];
+    unsigned int read_count;
+    unsigned int writes_to_unwired_gpio;
 } FakeGpio;
 
 static void require(bool condition, const char *message) {
@@ -21,6 +23,9 @@ static void require(bool condition, const char *message) {
 static int fake_write(void *context, unsigned int pin, bool high) {
     FakeGpio *gpio = context;
     if (pin >= 54U) return -1;
+    if (pin != 17U && pin != 27U && pin != 22U) {
+        ++gpio->writes_to_unwired_gpio;
+    }
     gpio->levels[pin] = high;
     return 0;
 }
@@ -32,7 +37,8 @@ static int fake_read(void *context,
     unsigned int row = (gpio->levels[17] ? 1U : 0U) |
                        (gpio->levels[27] ? 2U : 0U) |
                        (gpio->levels[22] ? 4U : 0U);
-    if (!gpio->levels[23]) return -1;
+    if (gpio->read_count >= SCB_BOARD_ROWS) return -1;
+    gpio->read_rows[gpio->read_count++] = row;
     for (size_t column = 0U; column < SCB_BOARD_COLUMNS; ++column) {
         require(pins[column] ==
                     (unsigned int[]){5U, 6U, 12U, 13U, 16U, 19U, 20U, 21U}[column],
@@ -67,13 +73,19 @@ static void test_matrix_scan_and_mapping(void) {
     ScbSensorMatrix matrix = make_matrix(&gpio);
     bool occupied[SCB_BOARD_SQUARES];
     gpio.rows[0][0] = true;
+    gpio.rows[0][3] = true;
     gpio.rows[7][7] = true;
     require(scb_sensor_matrix_initialize(&matrix) == 0, "initialize matrix");
     require(scb_sensor_matrix_scan(&matrix, occupied) == 0, "scan matrix");
     require(occupied[scb_square_index("a1")], "map a1");
+    require(occupied[scb_square_index("d1")], "detect a second column in the same row");
     require(occupied[scb_square_index("h8")], "map h8");
     require(gpio.sleep_calls == 16U, "two delays per row");
-    require(!gpio.levels[23], "decoder disabled after scan");
+    require(gpio.read_count == SCB_BOARD_ROWS, "read all eight rows");
+    for (unsigned int row = 0U; row < SCB_BOARD_ROWS; ++row) {
+        require(gpio.read_rows[row] == row, "74HC138 address sequence");
+    }
+    require(gpio.writes_to_unwired_gpio == 0U, "write only A0, A1, and A2");
 }
 
 static void test_active_low_inputs(void) {
@@ -155,7 +167,7 @@ static void test_capture(void) {
 static void test_invalid_overlapping_pins(void) {
     FakeGpio gpio = {0};
     ScbSensorMatrix matrix = make_matrix(&gpio);
-    matrix.enable_pin = matrix.address_pins[0];
+    matrix.column_pins[0] = matrix.address_pins[0];
     require(scb_sensor_matrix_validate(&matrix) < 0, "reject overlapping GPIO pins");
 }
 

@@ -88,6 +88,10 @@ target_link_libraries(sensor_matrix_tests PRIVATE scb_sensor_matrix)
 target_compile_options(sensor_matrix_tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME sensor_matrix_tests COMMAND sensor_matrix_tests)
 
+add_executable(sensor_matrix_demo tests/sensor_matrix_demo.c)
+target_link_libraries(sensor_matrix_demo PRIVATE scb_sensor_matrix)
+target_compile_options(sensor_matrix_demo PRIVATE -Wall -Wextra -Wpedantic)
+
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
 	add_test(NAME play_ai_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/play_ai_tests.py)
