@@ -7,7 +7,169 @@ This component provides the following functionality:
 3. Scans the complete 8×8 Hall-sensor matrix with square mapping, settling delays, and debouncing.
 4. Detects piece lifts, returns, placements, normal moves, and captures.
 5. Prints sensor status and detected moves in the terminal.
-6. Provides automated tests and a physical-hardware test procedure.
+6. Provides a physical-hardware test procedure.
+
+## Software architecture
+
+The hardware program processes the sensor data in the following order:
+
+```text
+Configure three address outputs and eight comparator inputs
+                         |
+                         v
+Select one row with the 74HC138 and read all eight columns
+                         |
+                         v
+Repeat for all eight rows to create one 64-square snapshot
+                         |
+                         v
+Require three identical snapshots before accepting a stable state
+                         |
+                         v
+Compare the new stable state with the previous stable state
+                         |
+                         v
+Print READY, LIFT, RETURN, PLACE, MOVE, or WAIT PLACE
+```
+
+The implementation is divided into three main source files:
+
+| File | Responsibility |
+| --- | --- |
+| `include/scb/sensor_matrix.h` | Declares the matrix, debounce, GPIO-operation, and movement-event data structures. |
+| `src/sensor_matrix.c` | Implements pin defaults, validation, row scanning, square mapping, debouncing, and movement detection. |
+| `src/hardware_main.c` | Uses libgpiod to configure the real Pi GPIO lines, repeatedly runs the processing pipeline, and prints events. |
+
+### 1. GPIO configuration
+
+`scb_sensor_matrix_defaults()` defines three BCM GPIO numbers for the 74HC138
+address inputs and eight BCM GPIO numbers for the LM324 outputs. The assignments
+are project choices, not requirements imposed by the decoder, and can be
+overridden from the command line.
+
+`backend_open()` in `src/hardware_main.c` requests the three address lines as
+outputs and the eight comparator lines as inputs through libgpiod. The program
+uses BCM GPIO numbers internally; the physical-pin column in the table below is
+only for locating each signal on the 40-pin header.
+
+`scb_sensor_matrix_validate()` rejects missing GPIO operations, out-of-range
+GPIO numbers, and assignments that reuse one GPIO for more than one signal.
+
+### 2. 74HC138 row addressing
+
+`scb_sensor_matrix_scan()` cycles `row` from 0 through 7. For each row, it
+extracts three bits from the row number and writes them to A0, A1, and A2:
+
+```text
+row 0 -> A2A1A0 = 000 -> Y0
+row 1 -> A2A1A0 = 001 -> Y1
+row 2 -> A2A1A0 = 010 -> Y2
+row 3 -> A2A1A0 = 011 -> Y3
+row 4 -> A2A1A0 = 100 -> Y4
+row 5 -> A2A1A0 = 101 -> Y5
+row 6 -> A2A1A0 = 110 -> Y6
+row 7 -> A2A1A0 = 111 -> Y7
+```
+
+The current schematic permanently enables the 74HC138: active-low enable pins
+4 and 5 are tied to GND, and active-high enable pin 6 is tied to +5 V. The Pi
+therefore controls only A0, A1, and A2. There is no software-controlled row
+enable pin.
+
+### 3. Eight independent comparator inputs
+
+After selecting a row, `backend_read_columns()` reads `ENC_IN1` through
+`ENC_IN8` separately. These values represent files `a` through `h` for the
+currently selected row. Reading eight independent inputs preserves multiple
+occupied columns in the same row.
+
+The 74LS147 priority encoder is bypassed. A priority encoder reports only its
+highest-priority active input and would therefore lose occupancy information
+when two or more columns are active simultaneously.
+
+### 4. Complete 8x8 scan and storage
+
+One call to `scb_sensor_matrix_scan()` selects all eight rows and reads eight
+columns per row. It stores the result in a 64-element Boolean array named
+`occupied`, where `true` means occupied and `false` means empty according to the
+configured comparator polarity.
+
+The array index is calculated as:
+
+```text
+index = row * 8 + column
+```
+
+For example, `e2` has zero-based row 1 and zero-based column 4, so its index is
+`1 * 8 + 4 = 12`. The current mapping places `a1` at index 0 and `h8` at index
+63. The physical orientation must still be confirmed on the assembled board.
+
+`scb_square_index()` converts a name such as `e2` to an array index, while
+`scb_square_name()` performs the reverse conversion for terminal messages.
+
+### 5. Settling delays
+
+Immediately reading the inputs after changing A0/A1/A2 could capture a signal
+while the decoder, sensor line, or comparator output is still changing.
+`scb_sensor_matrix_scan()` therefore applies two delays before reading each row:
+
+- `address_settle_us`, default 10 microseconds, after changing the decoder address.
+- `sensor_settle_us`, default 1000 microseconds, before sampling the columns.
+
+These are initial software values. The final values must be calibrated using
+measurements from the physical sensor board.
+
+### 6. Three-scan debouncing
+
+`scb_debouncer_update()` compares each new 64-square snapshot with a candidate
+snapshot. An identical result increments `candidate_count`; a different result
+replaces the candidate and resets the count to one. The default configuration
+publishes a new stable board only after three identical complete snapshots.
+
+A stable state that is identical to the previously published state is ignored,
+so an unchanged board does not repeatedly produce events. Debouncing the whole
+snapshot prevents a single short sensor disturbance from immediately producing
+a false lift or move.
+
+### 7. Piece-event detection
+
+`scb_move_tracker_process()` compares the new stable snapshot with the previous
+stable snapshot:
+
+- Occupied to empty records a lift and produces `LIFT e2`.
+- Empty to occupied with no pending lift produces `PLACE e4`.
+- A lifted piece returning to the same square produces `RETURN e2`.
+- A lifted piece appearing on another square produces `MOVE e2e4`.
+- For a basic capture, the captured piece is removed, the moving piece is
+  lifted, and the moving piece is placed on the destination square. For example,
+  this sequence can produce `MOVE e4d5`.
+
+Lifted squares are stored in `pending_lifts` until the program observes a
+placement. If multiple lifted squares make the result incomplete, the program
+can print `WAIT PLACE` and continue waiting for a stable destination.
+
+This module detects occupancy changes only. It does not identify piece types or
+decide whether a chess move is legal.
+
+### 8. Runtime loop and terminal output
+
+`main()` in `src/hardware_main.c` repeatedly calls:
+
+1. `scb_sensor_matrix_scan()` to obtain a raw 64-square snapshot.
+2. `scb_debouncer_update()` to publish only stable changes.
+3. `scb_move_tracker_process()` to interpret the stable change.
+4. `puts()` to print the resulting event message.
+
+The loop waits `poll_ms`, default 20 milliseconds, after each complete scan. It
+runs until it receives `SIGINT` or `SIGTERM`; pressing Ctrl-C stops the loop and
+releases the GPIO lines.
+
+### 9. Runtime configuration
+
+The executable accepts command-line options for the GPIO chip, address pins,
+column pins, address delay, sensor delay, polling interval, debounce count, and
+comparator polarity. This allows physical calibration without rewriting the
+scanning algorithm. Run `./build/scb_hardware --help` to display all options.
 
 ## GPIO pin assignment
 
@@ -127,39 +289,6 @@ Terminal messages include:
 Hall sensors report occupancy only; they cannot identify piece types. During a
 capture, the destination square must be observed empty for at least one stable
 scan. Otherwise, the destination cannot be determined from final occupancy alone.
-
-## Automated tests
-
-The sensor-matrix tests do not require GPIO hardware:
-
-```sh
-cmake -S . -B build
-cmake --build build
-./build/sensor_matrix_tests
-```
-
-The tests cover the 74HC138 address sequence, simultaneous active columns,
-64-square mapping, comparator polarity, debouncing, lift and return detection,
-normal moves, and captures.
-
-To demonstrate the behavior without a Raspberry Pi or sensor board, run:
-
-```sh
-cmake -S . -B build
-cmake --build build --target sensor_matrix_demo
-./build/sensor_matrix_demo
-```
-
-This C program prints the eight row addresses, separate column readings, the
-three-read debounce sequence, and terminal events for placement, lift, return,
-normal movement, and capture. It uses simulated GPIO; it does not validate the
-physical wiring, voltage levels, comparator threshold, or sensor timing.
-
-Run all configured tests with:
-
-```sh
-ctest --test-dir build --output-on-failure
-```
 
 ## Physical hardware test procedure
 
