@@ -3,9 +3,17 @@
   "C_Cpp.default.cStandard": "c17",
   "C_Cpp.default.cppStandard": "c++20",
   "C_Cpp.default.includePath": [
-    "${workspaceFolder}/include"
+    "${workspaceFolder}/pi5/rules/include",
+    "${workspaceFolder}/pi5/vendor/libchess/src",
+    "${workspaceFolder}/esp32/main",
+    "${workspaceFolder}/esp32/components/board_logic/include"
   ],
   "files.associations": {
     "*.h": "c"
+  },
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pio": true
   }
 }

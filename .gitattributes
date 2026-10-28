@@ -1,0 +1,2 @@
+tools/mac_test/binaries/stockfish-macos-universal filter=lfs diff=lfs merge=lfs -text
+pi5/engines/stockfish/stockfish-linux-arm64-universal filter=lfs diff=lfs merge=lfs -text

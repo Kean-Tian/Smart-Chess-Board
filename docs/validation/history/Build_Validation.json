@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-26",
+  "platform": "espressif32@6.9.0",
+  "esp_idf": "5.3.1",
+  "target": "esp32s3",
+  "target_compile": "passed",
+  "hardware_flash_or_execution": "not performed",
+  "host_ctest": {
+    "passed": 5,
+    "total": 5,
+    "suites": [
+      "libchess_adapter_tests",
+      "esp32_core_tests",
+      "play_ai_tests (mocked API)",
+      "scb_link_tests (fake serial)",
+      "board_game_tests"
+    ]
+  },
+  "portable_core_undefined_behavior_sanitizer": "passed",
+  "static_ram_bytes": 20888,
+  "linked_app_bytes": 256060,
+  "source_sha256": {
+    "firmware/main/app_main.c": "0840b95a9dc93996dd0b03c0b9c3c7428a301835fada68ef1246d2009b13dff2",
+    "firmware/main/board_pins.h": "64331007e96653c480fadc030cf1a151b5bcdc1cbb50e9deba86ab45c9251431",
+    "firmware/main/scb_core.c": "c2ed7ecb993bbe56f53a4b843e911993d3f8953ad3a1c639d58254dbb4329acc",
+    "firmware/main/scb_core.h": "4b06774d94d740e9ff962bafe896ebea6913268d4d64d414cd63db2d5e9f0d1b",
+    "firmware/CMakeLists.txt": "5a1323a397c1d2f311568d6bef6e2d03bb3ab8c8ea40fbc9c111c7ee7c8f9018",
+    "firmware/sdkconfig.defaults": "20d52e568e049dcda6e2fda58361c706662e4254265746b805b87ca8254631d9",
+    "firmware/platformio.ini": "0cd59629460478750b175d2261dea469ee55a557e24183ad44d71e1554e97f33",
+    "firmware/partitions.csv": "166a0614fdfef6818b84f1dec987bbfacb4ac80f036a8a3aab5be934b9f726f4",
+    "src/sensor_matrix.c": "10715641e5771808f51cae71072c86a364ae669536f491c2ae8fcd6fc411cd86",
+    "src/led_grid.c": "366195de63003e15cdd86471f5643f74beb4dcfe81788cd6b0464f12766f1c83",
+    "include/scb/led_grid.h": "63f43535f78c69a080543397072f52b7be7bea0bf13a5b7a1c6bd24b7e92db3d",
+    "include/scb/libchess_adapter.h": "ed2ac39130bac705f17a55f7582a06e6b07b3f47645d6432c572a70f1aed1119",
+    "include/scb/motor_axis.h": "3a84cb87bf8f2ec64a733f4ada36648f4ed74580a11e456c4b936cfded3197c2",
+    "include/scb/sensor_matrix.h": "4e03afaa97df121078b51a417a4a43de056eba2bb78471b05c038762b4e5d09b"
+  }
+}

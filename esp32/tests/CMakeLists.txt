@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.16)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    project(SCB_ESP32_HostTests LANGUAGES C)
+    enable_testing()
+endif()
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+set(SCB_ESP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+add_library(scb_board_logic STATIC
+    "${SCB_ESP_ROOT}/components/board_logic/src/sensor_matrix.c"
+    "${SCB_ESP_ROOT}/components/board_logic/src/led_grid.c"
+)
+target_include_directories(scb_board_logic PUBLIC "${SCB_ESP_ROOT}/components/board_logic/include")
+target_compile_options(scb_board_logic PRIVATE -Wall -Wextra -Werror)
+add_executable(esp32_core_tests esp32_core_tests.c "${SCB_ESP_ROOT}/main/scb_core.c")
+target_include_directories(esp32_core_tests PRIVATE "${SCB_ESP_ROOT}/main")
+target_compile_definitions(esp32_core_tests PRIVATE _POSIX_C_SOURCE=200809L)
+target_compile_options(esp32_core_tests PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+target_link_libraries(esp32_core_tests PRIVATE scb_board_logic)
+set_target_properties(esp32_core_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+add_test(NAME esp32_core_tests COMMAND esp32_core_tests)
