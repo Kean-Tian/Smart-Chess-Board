@@ -3,11 +3,17 @@
     {
       "name": "Smart Chessboard",
       "includePath": [
-        "${workspaceFolder}/include"
+        "${workspaceFolder}/pi5/rules/include",
+        "${workspaceFolder}/pi5/vendor/libchess/src",
+        "${workspaceFolder}/esp32/main",
+        "${workspaceFolder}/esp32/components/board_logic/include"
       ],
       "browse": {
         "path": [
-          "${workspaceFolder}/include"
+          "${workspaceFolder}/pi5/rules/include",
+          "${workspaceFolder}/pi5/vendor/libchess/src",
+          "${workspaceFolder}/esp32/main",
+          "${workspaceFolder}/esp32/components/board_logic/include"
         ]
       },
       "compilerPath": "/usr/bin/clang",

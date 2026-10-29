@@ -1,0 +1,27 @@
+{
+  "chip": "esp32s3",
+  "flash_mode": "dio",
+  "flash_freq": "80m",
+  "flash_size": "16MB",
+  "hardware_tested": false,
+  "images": [
+    {
+      "offset": "0x0",
+      "file": "bootloader.bin",
+      "bytes": 20896,
+      "sha256": "0701c45a709ad003db5a40456acba19d6eb7e6cae4cb3d9cf32236dfdd112662"
+    },
+    {
+      "offset": "0x8000",
+      "file": "partitions.bin",
+      "bytes": 3072,
+      "sha256": "5e71c3c890e04714daa03b21a0d23953a2dadf9fdf15eec02b886f7b6e9f8c81"
+    },
+    {
+      "offset": "0x10000",
+      "file": "firmware.bin",
+      "bytes": 256416,
+      "sha256": "95a047533799a93d88c900265de30d6886f136215f157c8c596ec63d5375a27e"
+    }
+  ]
+}

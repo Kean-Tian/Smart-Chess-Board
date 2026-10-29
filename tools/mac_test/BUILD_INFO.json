@@ -1,0 +1,12 @@
+{
+  "platform": "macOS Apple Silicon arm64",
+  "stockfish_release": "sf_19",
+  "official_mac_download": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-macos-universal.tar.gz",
+  "official_archive_sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77",
+  "sha256": {
+    "esp32_core_tests": "ced9747e53bc41111ee70f24c05167b9eccc055dd028147c972facaabb927834",
+    "libchess_adapter_tests": "02d7a033cc22b536657256bdd7a4dbfd8543b0cc2c8e476bfeccaec55ea8ba64",
+    "libscb_rules.dylib": "79b0396d8319aa5e0061a0b50faef5698d7fdb9f15658ec3ae56ff7ea062c99d",
+    "stockfish-macos-universal": "8eed61129d1493c5d1f2fd9323f0c54c47ac49319911fbde18c6b9c87e8b13c5"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-28",
+  "layout": {
+    "pi5": "Pi application, rules, engine, dependencies and tests",
+    "esp32": "MCU firmware, portable board logic, tests and release images"
+  },
+  "host_ctest": {
+    "passed": 6,
+    "total": 6
+  },
+  "pi5_standalone_host_ctest": {
+    "passed": 5,
+    "total": 5
+  },
+  "mac_entry_real_engine": "passed in final Desktop/SCB layout",
+  "esp32_target_build": "passed, ESP-IDF 5.3.1 / espressif32@6.9.0",
+  "gpio_configuration": "byte-identical to pre-cleanup board_pins.h",
+  "hardware_executed": false,
+  "removed_from_active_project": [
+    "duplicate legacy root source",
+    "Pi direct-GPIO hardware_main and shared-STEP motor driver",
+    "obsolete cloud-opponent prototype and test",
+    "unused Pi GPIO/SPI helper APIs",
+    "old build trees and caches",
+    "old SCB-backups and local KiCad preferences"
+  ],
+  "backup": "SCB_Before_Cleanup_20261028.zip (outside project)"
+}

@@ -1,0 +1,13 @@
+{
+  "release": "sf_19",
+  "version": "19",
+  "release_url": "https://github.com/official-stockfish/Stockfish/releases/tag/sf_19",
+  "release_published_at": "2026-09-05T08:33:17Z",
+  "download_url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-linux-arm64-universal.tar.gz",
+  "archive_sha256": "fe26cfd1d9db4c8af3d21e24d9ff34cacb31c1f940085a7583da11796f2bac01",
+  "archive_digest_verified": true,
+  "binary": "stockfish-linux-arm64-universal",
+  "binary_sha256": "bb6599ef38b7a4ae79200a601c40e81a854219a49dba78b1110e7eb4620609bf",
+  "target": "Linux ARM64 (aarch64), 64-bit Raspberry Pi OS",
+  "pi5_executed": false
+}
