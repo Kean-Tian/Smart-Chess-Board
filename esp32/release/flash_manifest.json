@@ -1,19 +1,19 @@
 {
-  "chip": "esp32c5",
-  "board": "DFRobot DFR1222 FireBeetle 2 ESP32-C5",
-  "module": "ESP32-C5-WROOM-1-N4",
+  "chip": "esp32",
+  "board": "WeMos LOLIN32 V1.0.0",
+  "module": "ESP-WROOM-32",
   "idf_version": "5.5.3",
-  "use_stub": false,
+  "use_stub": true,
   "flash_mode": "dio",
-  "flash_freq": "80m",
+  "flash_freq": "40m",
   "flash_size": "4MB",
   "hardware_tested": false,
   "images": [
     {
-      "offset": "0x2000",
+      "offset": "0x1000",
       "file": "bootloader.bin",
-      "bytes": 14624,
-      "sha256": "54b06a85193861ee03017881a42ba78bd201dbd1d20fb53f8f8c934999b3c6c6"
+      "bytes": 18320,
+      "sha256": "0c536f6db24cfad2730a226301bd3e90499fa8aaf9e30a763d8ebd89f8617a4a"
     },
     {
       "offset": "0x8000",
@@ -24,22 +24,22 @@
     {
       "offset": "0x10000",
       "file": "firmware.bin",
-      "bytes": 197424,
-      "sha256": "f009372e66013085f3929cac9585bc43f4c58c2cd5fec97a01afda6e766712a3"
+      "bytes": 200896,
+      "sha256": "505825258e27c734c5502ac74c853308b95614fa4eac82d4bbfd374583b9a5bf"
     }
   ],
   "build_date": "2026-11-03",
-  "static_internal_ram_bytes": 73440,
+  "static_internal_ram_bytes": 79944,
   "static_ram_limit_bytes": 270336,
   "source_sha256": {
-    "CMakeLists.txt": "752432d84dae1888edf43c77ff40ef92e8608acc5dce70966c12a243717792a0",
-    "sdkconfig.defaults": "216e0fbd17ae143355bf02c36573538e8286128ce277711cbd4ac8c67fe8bf7f",
+    "CMakeLists.txt": "ca775051bfd96502191ad8a037ab766d769a26b59b03ded9c9767d9fd39e2907",
+    "sdkconfig.defaults": "8184e4b0f0d95d78ab08efbd6bab1764cd8161c19914e58b315d75beb2fd6ded",
     "partitions.csv": "166a0614fdfef6818b84f1dec987bbfacb4ac80f036a8a3aab5be934b9f726f4",
-    "main/app_main.c": "9b662b0d2045ce59df02ff018cd85eb2e3693d2785da758595e2a5e6996d48da",
-    "main/board_pins.h": "e86e4f4ea36d463da6674fa39d3d42c3d2b35168fea922a8fa126bb74abc4476",
-    "main/scb_core.c": "701905c45de1bf397386e892a2e73576da72a94ae255c3f8513412a94f5e5715",
+    "main/app_main.c": "023e2d28d490ce879564be6aefc8ebca6618b77780c1ad627b9cdcab3f970d2c",
+    "main/board_pins.h": "5fec21fd594f0442f5a0066cdb3bb12ae634c3a59ee3843ce7bc4bd1f925d4a6",
+    "main/scb_core.c": "a88883400fa9d6a65635dae320db024ed3082cb207f47446886fd905d009fe54",
     "main/scb_core.h": "6a726880b875bf3a0aed53ebe32576775dcdb96f4e549098657c2a10ab5ed465",
-    "main/CMakeLists.txt": "ec68d5b07f79cfe91e76aaa446a8780d385ca51ae010e0f809f8972ec0f31653",
+    "main/CMakeLists.txt": "9b7d02e14d70482919e7880278effb51a98053274e26c755586778add4d09d45",
     "components/board_logic/CMakeLists.txt": "f200bbd6bc409437f07c9bd8a642b5d69ba898643c34cf2f906739cc2068c276",
     "components/board_logic/include/scb/led_grid.h": "5b8c9cbf69c94036027f33370b82395cc66e1fb72ecc0e138caa47498ecbbbb6",
     "components/board_logic/include/scb/sensor_matrix.h": "84fd6be1d81c14f515abfb3adda7aaec4dcaaee154f5870fac95bfd821712e92",

@@ -11,11 +11,11 @@
   "pi5_standalone_host_ctest": {
     "passed": 6,
     "total": 6,
-    "note": "Previous pre-C5 validation only; Pi-only copy not rebuilt for this migration."
+    "note": "Previous pre-LOLIN32 validation only; Pi-only copy was not rebuilt in this migration."
   },
-  "mac_entry_real_engine": "passed: ten suites, C5-mapped portable core and real Stockfish/libchess integration",
-  "esp32_target_build": "passed: native ESP-IDF 5.5.3, RISC-V esp-14.2.0_20251107",
-  "static_internal_ram_bytes": 73440,
+  "mac_entry_real_engine": "passed: ten suites, LOLIN32-mapped portable core and real Stockfish/libchess integration",
+  "esp32_target_build": "passed: native ESP-IDF 5.5.3 / Xtensa esp-14.2.0_20251107",
+  "static_internal_ram_bytes": 79944,
   "static_control_ram_limit_bytes": 270336,
   "nominal_full_board_hz": 100,
   "simulated_full_board_hz": 100,
@@ -23,7 +23,7 @@
   "simulated_debounce_candidate_to_accept_us": 10000,
   "hardware_executed": false,
   "hardware_scan_or_led_latency_measured": false,
-  "gpio_assignments": "C5 jumper-test map: 18 distinct exposed I/O + native USB GPIO13/14; GPIO0/1 excluded",
+  "gpio_assignments": "18 external signals plus UART0 GPIO1/GPIO3; no Flash or boot straps in external harness; GPIO34/35/36/39 input-only",
   "engine_timing": {
     "platform": "macOS arm64, not Pi hardware",
     "threads": 1,
@@ -64,20 +64,27 @@
     "local_game_smoke": "passed",
     "normal_startup_checks_hidden": "passed"
   },
-  "mcu_board": "DFRobot DFR1222 FireBeetle 2 ESP32-C5",
-  "mcu_module": "ESP32-C5-WROOM-1-N4",
-  "mcu_chip": "esp32c5",
-  "c5_migration": {
-    "single_core_tasks": true,
+  "mcu_board": "WeMos LOLIN32 V1.0.0",
+  "mcu_module": "ESP-WROOM-32",
+  "mcu_chip": "esp32",
+  "lolin32_migration": {
+    "transport": "CP2104 USB-UART bridge -> UART0 GPIO1 TX / GPIO3 RX, 115200 8N1",
+    "cpu": "dual-core 240 MHz Xtensa; control on core 1; serial/LED on core 0",
     "rmt_dma": false,
-    "rmt_buffer_symbols": 96,
+    "rmt_buffer_symbols": 128,
     "flash_size": "4MB",
-    "bootloader_address": "0x2000",
+    "flash_freq": "40m",
+    "bootloader_address": "0x1000",
+    "release_chip_headers": "classic ESP32 (0)",
     "release_image_checksums": "passed",
-    "release_chip_headers": "ESP32-C5 (23)",
-    "flash_dry_run": "passed; no port opened",
-    "release_regressions": "passed: corrupted image, other-chip image, old bootloader address rejected",
-    "reset_requirements": "GPIO27 external 10k enable pull-up; GPIO28 BOOT held high at reset, open-drain Y_DIR afterward",
-    "validation_scope": "build and host simulation only; no board flashing or physical tests"
+    "flash_dry_run": "passed; no serial port opened",
+    "uart_open_regressions": "passed: DTR/RTS deasserted before open, startup settle, close on failure",
+    "host_ctest": {
+      "passed": 10,
+      "total": 10
+    },
+    "hardware_executed": false,
+    "wiring_requirements": "GPIO13 external 10k enable pull-up; 3.3 V external comparator pull-ups on all columns, required for input-only GPIO34-39",
+    "onboard_led": "GPIO5 active-low; intentionally unused, not MAGNET output"
   }
 }

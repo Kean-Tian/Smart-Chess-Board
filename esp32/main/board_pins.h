@@ -1,28 +1,31 @@
 #ifndef SCB_BOARD_PINS_H
 #define SCB_BOARD_PINS_H
 
-/* DFRobot DFR1222 V1.0, ESP32-C5-WROOM-1-N4 (no PSRAM).
- * Numbers are native GPIO numbers, NOT Arduino D numbers or module-pad numbers.
- * This is a jumper-wire test mapping; see docs/PCB_Connection_Map.md.
+/* WeMos LOLIN32 V1.0.0, classic ESP-WROOM-32 / ESP32, 4 MB Flash, no PSRAM.
+ * Native GPIO numbers, NOT chip/module-pad numbers from the pinout diagram.
+ * Test harness mapping: docs/PCB_Connection_Map.md.
  */
-#define SCB_PIN_LED 2
-#define SCB_PIN_ROW_A0 3
-#define SCB_PIN_ROW_A1 4
-#define SCB_PIN_ROW_A2 5
-#define SCB_COLUMN_PINS {6, 7, 8, 9, 10, 23, 24, 25}
-#define SCB_PIN_MAGNET 15 /* D13/onboard LED; available on the N4/no-PSRAM module. */
-#define SCB_PIN_X_STEP 12 /* RX: no UART console is enabled by the application. */
-#define SCB_PIN_X_DIR 11  /* TX: ROM boot messages are harmless only with EN held HIGH. */
-#define SCB_PIN_Y_STEP 26
-#define SCB_PIN_Y_DIR 28  /* BOOT: open-drain output, using the board's pull-up. */
-#define SCB_PIN_MOTOR_EN 27 /* Shared A4988 enable, LOW = enabled; external 10k pull-up required. */
-#define SCB_PIN_USB_DM 13
-#define SCB_PIN_USB_DP 14
-#define SCB_GPIO_COUNT 29U
+#define SCB_PIN_LED 4
+#define SCB_PIN_ROW_A0 16
+#define SCB_PIN_ROW_A1 17
+#define SCB_PIN_ROW_A2 18
+#define SCB_COLUMN_PINS {36, 39, 34, 35, 32, 33, 25, 26}
+#define SCB_PIN_MAGNET 27
+#define SCB_PIN_X_STEP 19
+#define SCB_PIN_X_DIR 21
+#define SCB_PIN_Y_STEP 22
+#define SCB_PIN_Y_DIR 23
+#define SCB_PIN_MOTOR_EN 13 /* Shared active-low enable; external 10k pull-up to 3.3 V. */
+#define SCB_PIN_UART_TX 1   /* Onboard CP2104 bridge RX. Reserve for communication. */
+#define SCB_PIN_UART_RX 3   /* Onboard CP2104 bridge TX. Reserve for communication. */
+#define SCB_UART_BAUD 115200
+#define SCB_GPIO_COUNT 40U
 
-/* Keep GPIO0 (3V3_C power control) and GPIO1 (battery ADC) untouched.
- * GPIO26/27/28 are boot straps: never drive 27/28 LOW during reset.
- * Do not press BOOT while using the motion outputs.
+/* GPIO34/35/36/39 are INPUT ONLY, with no internal pull resistors.
+ * Sensor comparator outputs require external 3.3 V pull-ups.
+ * GPIO6-11 belong to Flash. Avoid boot straps 0/2/5/12/15.
+ * The onboard active-low LED on GPIO5 is intentionally not assigned.
+ * GPIO16/17 are available on this WROOM board, not a WROVER/PSRAM substitute.
  */
 #define SCB_SENSOR_REVERSE_ROWS 0
 #define SCB_SENSOR_REVERSE_COLUMNS 0

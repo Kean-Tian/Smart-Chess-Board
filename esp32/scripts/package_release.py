@@ -1,4 +1,4 @@
-"""Export an ESP-IDF C5 build into release/ with verified flash metadata."""
+"""Export an ESP-IDF LOLIN32 build into release/ with verified flash metadata."""
 import argparse
 import datetime
 import hashlib
@@ -26,8 +26,8 @@ def main():
     description = json.loads((build / 'project_description.json').read_text())
     flash = json.loads((build / 'flasher_args.json').read_text())
     settings = flash['flash_settings']
-    if description['target'] != 'esp32c5' or settings['flash_size'] != '4MB':
-        raise SystemExit('Expected an ESP32-C5 / 4 MB build; refusing to package')
+    if description['target'] != 'esp32' or settings['flash_size'] != '4MB':
+        raise SystemExit('Expected an LOLIN32 ESP32 / 4 MB build; refusing to package')
     elf = build / description['app_elf']
     source_files = [ROOT / 'CMakeLists.txt', ROOT / 'sdkconfig.defaults', ROOT / 'partitions.csv']
     source_files += sorted((ROOT / 'main').glob('*.[ch]'))
@@ -57,8 +57,9 @@ def main():
     version_text = (Path(description['idf_path']) / 'tools/cmake/version.cmake').read_text()
     version_parts = dict(re.findall(r'set\(IDF_VERSION_(MAJOR|MINOR|PATCH) (\d+)\)', version_text))
     idf_version = '.'.join(version_parts[part] for part in ['MAJOR', 'MINOR', 'PATCH'])
-    manifest = dict(chip='esp32c5', board='DFRobot DFR1222 FireBeetle 2 ESP32-C5',
-                    module='ESP32-C5-WROOM-1-N4', idf_version=idf_version, use_stub=False,
+    manifest = dict(chip='esp32', board='WeMos LOLIN32 V1.0.0',
+                    module='ESP-WROOM-32', idf_version=idf_version,
+                    use_stub=flash['extra_esptool_args']['stub'],
                     flash_mode=settings['flash_mode'], flash_freq=settings['flash_freq'],
                     flash_size=settings['flash_size'], hardware_tested=False, images=images,
                     build_date=str(datetime.date.today()), static_internal_ram_bytes=used,
@@ -67,7 +68,7 @@ def main():
     (out / 'flash_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     from flash_firmware import validate_release
     validate_release(out)
-    print(f'Packaged C5 release: {len(images)} images, static internal RAM {used} bytes')
+    print(f'Packaged LOLIN32 release: {len(images)} images, static internal RAM {used} bytes')
     return 0
 
 

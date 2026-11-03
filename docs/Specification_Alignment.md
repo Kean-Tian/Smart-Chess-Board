@@ -11,7 +11,7 @@ This change applies the Team 24 requirements supplied on 2026-10-29 to software 
 | Debounce within milliseconds | Two consecutive identical complete frames. Acceptance is 10 ms after the first matching candidate observation at the nominal schedule; physical detection typically needs up to about 20–30 ms depending on row phase. | Simulated stable inputs. Noise, sensor startup, polarity, and orientation require hardware tests. |
 | LED/visual feedback <100 ms | Queue-based LED updates, separate RMT worker, 5 ms Pi event polling, background engine search, and 80 ms LED-command ACK timeout. | LED queue-to-RMT-completion timing is reported by PLATFORM. This does not measure the complete physical-event-to-light path or a TFT GUI. |
 | SRAM about 264–520 KB for search | Stockfish runs in Pi DRAM, not MCU SRAM. Its default Hash is 16 MiB; its total process memory is larger. The firmware has no search/transposition table. A separate conservative 264 KiB ceiling checks static MCU DRAM/IRAM/RTC allocation at ESP-IDF link time. | Build-time static accounting and runtime free/minimum internal heap reporting. The original search-SRAM wording conflicts with this architecture and needs clarification in the report. |
-| GPIO capacity 22–25 minimum | The C5 test mapping uses all 18 exposed I/O plus native USB D+/D− (20 signals). No extra pins are assigned merely to raise the count. | Pin uniqueness, DFR1222 header availability, and module restrictions are checked; jumper wiring is required. Additional switches require confirmed PCB connections. |
+| GPIO capacity 22–25 minimum | The LOLIN32 map uses 18 external signals plus UART0 TX/RX through the onboard USB bridge (20 MCU signals). No extra pins are assigned merely to raise the count. | Pin uniqueness, LOLIN32 header availability, and module restrictions are checked; jumper wiring is required. Additional switches require confirmed PCB connections. |
 | Maximum 25 W, typical 10 W | Default engine threads reduced to 1, Hash reduced to 16 MiB, Ponder remains off, and LED channels are capped at 32/255. Motor/magnet stop behavior is retained. | Resource controls only; whole-system power has not been measured or guaranteed. |
 | Ambient operation 10–35 C | Component, enclosure, and environmental qualification. | Not established by software tests. |
 | Enclosure surface <45 C | Requires enclosure temperature measurements and thermal design; chip temperature would not substitute for enclosure temperature. | No connected enclosure sensor; no fabricated software temperature protection. |
@@ -26,7 +26,7 @@ This change applies the Team 24 requirements supplied on 2026-10-29 to software 
 After connecting the flashed MCU to a Pi, run from `pi5/`:
 
 ```sh
-.venv/bin/python app/board_diagnostics.py --port /dev/ttyACM0 --seconds 10 --exercise-leds --output runtime/Timing_Validation.json
+.venv/bin/python app/board_diagnostics.py --port /dev/ttyUSB0 --seconds 10 --exercise-leds --output runtime/Timing_Validation.json
 ```
 
 This command does not ARM, GOTO, MOVE, or JOG. The optional LED exercise changes a dim a1 LED and clears the LEDs afterward. It should be used outside an active game. Closing the USB client sends STOP as in the existing protocol.
@@ -41,10 +41,10 @@ The report intentionally separates MCU software timings from optical feedback, r
 
 ## Firmware and Safety Boundaries
 
-The current MCU target is DFR1222 ESP32-C5, with a new test-harness GPIO map documented in PCB_Connection_Map.md. Row-settling time, polarity defaults, calibration requirements, and protection timeouts are retained. No undocumented homing or temperature inputs are assigned. Automatic homing, collision avoidance, automatic captures, and a full touchscreen GUI remain outside this change.
+The current MCU target is WeMos LOLIN32 ESP-WROOM-32, with a new test-harness GPIO map documented in PCB_Connection_Map.md. Row-settling time, polarity defaults, calibration requirements, and protection timeouts are retained. No undocumented homing or temperature inputs are assigned. Automatic homing, collision avoidance, automatic captures, and a full touchscreen GUI remain outside this change.
 
 The ESP-IDF post-link RAM check includes static internal data, instruction RAM, and RTC allocations, excluding flash sections and linker padding. It does not include later dynamic task/driver allocations. Inspect PLATFORM heap/min_heap on hardware under sustained load. The native ESP-IDF CMake target runs the RAM check after linking.
 
-The C5 has one application CPU. Control (priority 10) and LED (priority 3) run as separate unpinned tasks on that CPU; RMT uses interrupt refilling without DMA. Both processors and their operating systems remain subject to scheduling delays. TIMING detects observed failures; source configuration alone is not proof that timing requirements have been met on the PCB.
+The classic ESP32 has two application cores. Control (priority 10) is pinned to core 1; LED (priority 3) and serial output (priority 4) run on core 0. RMT uses interrupt refilling without DMA. Both processors and their operating systems remain subject to scheduling delays. TIMING detects observed failures; source configuration alone is not proof that timing requirements have been met on the PCB.
 
 An asynchronous RMT output failure is counted and reported as `FAULT LED_OUTPUT` by the control task, which also disables motion and releases the electromagnet.

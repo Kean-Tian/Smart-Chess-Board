@@ -264,8 +264,8 @@ def run(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Pi rules console with ESP32-C5 sensor input")
-    parser.add_argument("--port", default="/dev/ttyACM0")
+    parser = argparse.ArgumentParser(description="Pi rules console with LOLIN32 ESP32 sensor input")
+    parser.add_argument("--port", default="/dev/ttyUSB0")
     parser.add_argument("--mode", choices=["pvp", "pvc"], default="pvp")
     add_opponent_arguments(parser)
     add_coaching_arguments(parser)

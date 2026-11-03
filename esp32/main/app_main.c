@@ -3,7 +3,7 @@
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 #include "driver/rmt_encoder.h"
-#include "driver/usb_serial_jtag.h"
+#include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
@@ -14,14 +14,14 @@
 #include "freertos/task.h"
 #include <string.h>
 
-#if !CONFIG_IDF_TARGET_ESP32C5
-#error "This firmware targets FireBeetle 2 ESP32-C5 (DFR1222)."
+#if !CONFIG_IDF_TARGET_ESP32
+#error "This firmware targets the classic ESP32 in WeMos LOLIN32 (ESP-WROOM-32)."
 #endif
 #if defined(CONFIG_SPIRAM)
-#error "DFR1222 N4 has no PSRAM; GPIO15 is used by the electromagnet output."
+#error "LOLIN32 WROOM has no PSRAM; GPIO16/17 are assigned as sensor row outputs."
 #endif
-_Static_assert(SOC_CPU_CORES_NUM == 1, "C5 task layout expects one application CPU");
-_Static_assert(SCB_PIN_USB_DM == 13 && SCB_PIN_USB_DP == 14, "Keep native C5 USB pins reserved");
+_Static_assert(SOC_CPU_CORES_NUM == 2, "LOLIN32 WROOM task layout expects two CPU cores");
+_Static_assert(SCB_PIN_UART_TX == 1 && SCB_PIN_UART_RX == 3, "Keep onboard USB-UART pins reserved");
 
 static ScbCore core;
 static QueueHandle_t tx_queue;
@@ -38,12 +38,7 @@ static rmt_symbol_word_t symbols[SCB_LED_COUNT * 24U + 1U];
 
 static bool write_pin(void *ctx, unsigned pin, bool high) {
     (void)ctx;
-    if (gpio_set_level((gpio_num_t)pin, high) != ESP_OK) return false;
-    if (pin == SCB_PIN_Y_DIR && high) {
-        esp_rom_delay_us(SCB_STEP_HIGH_US);
-        return gpio_get_level((gpio_num_t)pin) != 0; /* BOOT held or external pull-down. */
-    }
-    return true;
+    return gpio_set_level((gpio_num_t)pin, high) == ESP_OK;
 }
 static bool read_pin(void *ctx, unsigned pin) {
     (void)ctx;
@@ -123,14 +118,14 @@ static void emit_frame(void *ctx, const char *line) {
     /* Dropping a complete frame under backpressure never splices two lines. */
     (void)xQueueSend(tx_queue, frame, 0);
 }
-static void usb_writer(void *unused) {
+static void serial_writer(void *unused) {
     (void)unused;
     char frame[SCB_LINE_CAPACITY];
     for (;;) {
         if (xQueueReceive(tx_queue, frame, portMAX_DELAY) != pdTRUE) continue;
         size_t sent = 0, length = strlen(frame);
         while (sent < length) {
-            int n = usb_serial_jtag_write_bytes(frame + sent, length - sent, pdMS_TO_TICKS(5));
+            int n = uart_write_bytes(UART_NUM_0, frame + sent, length - sent);
             if (n > 0) sent += (size_t)n;
             else vTaskDelay(pdMS_TO_TICKS(5));
         }
@@ -150,13 +145,6 @@ static void configure_gpio(void) {
     const gpio_config_t out_config = {.pin_bit_mask = output_mask, .mode = GPIO_MODE_OUTPUT};
     const gpio_config_t in_config = {.pin_bit_mask = input_mask, .mode = GPIO_MODE_INPUT};
     ESP_ERROR_CHECK(gpio_config(&out_config));
-    /* GPIO28 shares the physical BOOT button to GND. Open-drain avoids a
-     * push-pull HIGH short if the button is pressed. Never press it in motion:
-     * the button would still override the requested Y direction.
-     */
-    const gpio_config_t boot_dir = {.pin_bit_mask = UINT64_C(1) << SCB_PIN_Y_DIR,
-        .mode = GPIO_MODE_INPUT_OUTPUT_OD, .pull_up_en = GPIO_PULLUP_ENABLE};
-    ESP_ERROR_CHECK(gpio_config(&boot_dir));
     /* The sensor PCB already has 3.3 V LM339 pull-ups. */
     ESP_ERROR_CHECK(gpio_config(&in_config));
 }
@@ -175,7 +163,7 @@ static void control_task(void *unused) {
             scb_core_fault(&core, "LED_OUTPUT");
         }
         scb_core_tick(&core, esp_timer_get_time());
-        int n = usb_serial_jtag_read_bytes(buf, sizeof(buf), 0);
+        int n = uart_read_bytes(UART_NUM_0, buf, sizeof(buf), 0);
         if (n > 0) scb_core_feed(&core, buf, (size_t)n, esp_timer_get_time());
         /* Absolute scheduling avoids adding work time to every 1 ms delay. */
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(SCB_CONTROL_TICK_MS));
@@ -184,12 +172,18 @@ static void control_task(void *unused) {
 void app_main(void) {
     configure_gpio();
     esp_log_level_set("*", ESP_LOG_NONE); /* Do not mix logs into the application protocol. */
-    usb_serial_jtag_driver_config_t usb = {.tx_buffer_size = 2048, .rx_buffer_size = 1024};
-    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb));
+    const uart_config_t uart = {.baud_rate = SCB_UART_BAUD,
+        .data_bits = UART_DATA_8_BITS, .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1, .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT};
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, SCB_PIN_UART_TX, SCB_PIN_UART_RX,
+                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 2048, 2048, 0, NULL, 0));
     tx_queue = xQueueCreate(32, SCB_LINE_CAPACITY);
     led_queue = xQueueCreate(1, sizeof(LedFrame));
     configASSERT(tx_queue && led_queue);
-    configASSERT(xTaskCreate(usb_writer, "scb_usb_tx", 3072, NULL, 4, NULL) == pdPASS);
+    configASSERT(xTaskCreatePinnedToCore(serial_writer, "scb_serial_tx", 3072, NULL, 4, NULL, 0) == pdPASS);
     const rmt_tx_channel_config_t rmt = {.gpio_num = SCB_PIN_LED,
         .clk_src = RMT_CLK_SRC_DEFAULT, .resolution_hz = 10000000,
         .mem_block_symbols = 2 * SOC_RMT_MEM_WORDS_PER_CHANNEL,
@@ -198,12 +192,12 @@ void app_main(void) {
     const rmt_copy_encoder_config_t encoder = {};
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&encoder, &led_encoder));
     ESP_ERROR_CHECK(rmt_enable(led_channel));
-    configASSERT(xTaskCreate(led_writer, "scb_led", 3072, NULL, 3, NULL) == pdPASS);
+    configASSERT(xTaskCreatePinnedToCore(led_writer, "scb_led", 3072, NULL, 3, NULL, 0) == pdPASS);
     ScbIo io = {.write = write_pin, .read = read_pin, .pulse = pulse_pin,
         .show_leds = show_leds, .emit = emit_frame, .stats = read_stats};
     if (!scb_core_init(&core, io, esp_timer_get_time())) {
         scb_core_fault(&core, "INIT");
         for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    configASSERT(xTaskCreate(control_task, "scb_control", 8192, NULL, 10, NULL) == pdPASS);
+    configASSERT(xTaskCreatePinnedToCore(control_task, "scb_control", 8192, NULL, 10, NULL, 1) == pdPASS);
 }

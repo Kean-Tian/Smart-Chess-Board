@@ -28,7 +28,7 @@ def assess(timing, platform, elapsed_s, frame_delta):
 
 def main():
     parser = argparse.ArgumentParser(description="Measure MCU scan and LED software timing via USB")
-    parser.add_argument("--port", default="/dev/ttyACM0")
+    parser.add_argument("--port", default="/dev/ttyUSB0")
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--exercise-leds", action="store_true",

@@ -75,16 +75,16 @@ class FirmwareReleaseTests(unittest.TestCase):
         spec.loader.exec_module(cls.flash)
         cls.release = ROOT / "esp32/release"
 
-    def test_release_is_c5_and_dry_run_never_opens_serial(self):
+    def test_release_is_esp32_and_dry_run_never_opens_serial(self):
         files = self.flash.validate_release(self.release)
-        self.assertEqual(files[::2], ["0x2000", "0x8000", "0x10000"])
+        self.assertEqual(files[::2], ["0x1000", "0x8000", "0x10000"])
         with patch.object(self.flash, "RELEASE", self.release), \
                 patch.object(self.flash.subprocess, "call") as execute, \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(self.flash.main(["--port", "not-a-real-port", "--dry-run"]), 0)
         execute.assert_not_called()
-        self.assertIn("--chip esp32c5", output.getvalue())
-        self.assertIn("--no-stub", output.getvalue())
+        self.assertIn("--chip esp32 ", output.getvalue())
+        self.assertNotIn("--no-stub", output.getvalue())
 
     def test_corrupt_or_other_chip_image_is_rejected(self):
         for other_chip in [False, True]:
@@ -102,7 +102,7 @@ class FirmwareReleaseTests(unittest.TestCase):
                 else:
                     data[-1] ^= 1
                 path.write_bytes(data)
-                with self.assertRaisesRegex(ValueError, "not an ESP32-C5" if other_chip else "checksum mismatch"):
+                with self.assertRaisesRegex(ValueError, "not a classic ESP32" if other_chip else "checksum mismatch"):
                     self.flash.validate_release(temp)
 
     def test_previous_chip_bootloader_address_is_rejected(self):
@@ -111,7 +111,7 @@ class FirmwareReleaseTests(unittest.TestCase):
             for name in ["flash_manifest.json", "bootloader.bin", "partitions.bin", "firmware.bin"]:
                 shutil.copy2(self.release / name, temp / name)
             manifest = json.loads((temp / "flash_manifest.json").read_text())
-            next(item for item in manifest["images"] if item["file"] == "bootloader.bin")["offset"] = "0x0"
+            next(item for item in manifest["images"] if item["file"] == "bootloader.bin")["offset"] = "0x2000"
             (temp / "flash_manifest.json").write_text(json.dumps(manifest))
             with self.assertRaisesRegex(ValueError, "flash address"):
                 self.flash.validate_release(temp)

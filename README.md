@@ -1,6 +1,6 @@
 # Smart Chess Board
 
-Team 24. The ESP32-C5 controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
+Team 24. The LOLIN32 ESP32 controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
 
 ## Git LFS Setup
 
@@ -16,7 +16,7 @@ git lfs pull
 | Task | Start here |
 |---|---|
 | Modify Pi 5 features or choose a chess opponent | [pi5/](pi5/README.md) |
-| Modify ESP32-C5 firmware or GPIO settings, or flash the firmware | [esp32/](esp32/README.md) |
+| Modify LOLIN32 ESP32 firmware or GPIO settings, or flash the firmware | [esp32/](esp32/README.md) |
 | Play on the current Mac | Double-click `SCB_Computer_Test.command` |
 | Validate the software on the current Mac | `sh SCB_Computer_Test.command --check-only` |
 | View PCB schematics and the KiCad project | [hardware/](hardware/README.md) |
@@ -35,7 +35,7 @@ SCB/
 │   ├── tests/
 │   ├── setup.sh               Initial setup on the Pi
 │   └── start.sh               Startup on the Pi
-├── esp32/                     Standalone ESP-IDF firmware project for FireBeetle C5
+├── esp32/                     Standalone ESP-IDF firmware project for WeMos LOLIN32
 │   ├── main/                  GPIO configuration, control logic, and platform drivers
 │   ├── components/board_logic/  Debouncing, move events, and LED square mapping
 │   ├── tests/                 Control-logic tests without hardware

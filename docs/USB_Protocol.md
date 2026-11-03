@@ -1,6 +1,6 @@
 # MCU–Pi USB 协议 v1
 
-FireBeetle 2 ESP32-C5 内建 USB Serial/JTAG，通过板载 USB-C 连接 Pi。Pi 通常出现 `/dev/ttyACM0`；macOS 使用实际 `/dev/cu.usbmodem...` 名称。115200 是串口客户端设置，USB 传输并不是 UART 位速率。
+WeMos LOLIN32（经典 ESP32 / ESP-WROOM-32）通过板载 Micro-USB 和 CP2104 USB-UART 桥连接 Pi／电脑。MCU 使用 UART0：TX=GPIO1、RX=GPIO3，115200 baud、8N1、无硬件流控。Pi 常见 `/dev/ttyUSB0`；macOS 可能是 `/dev/cu.SLAB_USBtoUART` 或 `/dev/cu.usbserial-*`，以实际枚举为准。GPIO1/3 不接棋盘外设。客户端打开串口前释放 DTR/RTS，并等待 0.5 秒让可能的复位瞬态结束。
 
 ## 帧格式
 
@@ -9,7 +9,7 @@ FireBeetle 2 ESP32-C5 内建 USB Serial/JTAG，通过板载 USB-C 连接 Pi。Pi
 - 请求行含前缀最多 127 字节。溢出或含非 ASCII 控制字节时，丢弃整行直至 LF，防止尾部被误当作另一条命令。
 - 回复：`ACK 42 COMMAND`、`ERR 42 REASON`、`DONE 42 MOTION`。
 - `STATUS` 直接回复 `STATUS 42 armed=0 moving=0 magnet=0 origin=0 steps=0`。
-- 主动事件：`BOARD <16位HEX>`、`EVENT ...`、`FAULT ...`、`HELLO SCB_ESP32C5 1`。
+- 主动事件：`BOARD <16位HEX>`、`EVENT ...`、`FAULT ...`、`HELLO SCB_LOLIN32 1`。
 - BOARD/RAW 的 bit0=a1，bit63=h8。BOARD 是去抖后的完整帧，RAW 是最近完成扫描的完整原始帧。
 - TX 队列满时只丢整帧，不截断拼接；客户端可能超时。读状态可以重新查询，**运动请求不能自动重试**。
 
@@ -77,4 +77,9 @@ STOP
 
 ## 2026-10-29 时序更新
 
-整盘目标 100 Hz（10 ms），消抖为两张完整一致帧；首张候选帧到确认名义间隔 10 ms，不代表从物理变化到显示的总延迟。LED 采用独立任务和单项覆盖队列，ACK 表示已接受，较新的未发送状态可替换旧状态。PLATFORM 的 LED 延迟是入队至 RMT 完成，非光学测量。C5 上控制和 LED 是同一单核上的独立任务，RMT 使用无 DMA 的中断补充方式；实际时序需测量。Pi 在后台运行 Stockfish，默认 3 秒，游戏入口允许 2–5 秒；棋盘事件轮询为 5 ms。详细验收与未验证项见 Specification_Alignment.md。
+整盘目标 100 Hz（10 ms），消抖为两张完整一致帧；首张候选帧到确认名义间隔 10 ms，不代表从物理变化到显示的总延迟。LED 采用独立任务和单项覆盖队列，ACK 表示已接受，较新的未发送状态可替换旧状态。PLATFORM 的 LED 延迟是入队至 RMT 完成，非光学测量。LOLIN32 控制任务运行在 core 1，LED 和串口输出运行在 core 0；RMT 使用无 DMA 的中断补充方式，实际时序需测量。Pi 在后台运行 Stockfish，默认 3 秒，游戏入口允许 2–5 秒；棋盘事件轮询为 5 ms。详细验收与未验证项见 Specification_Alignment.md。
+
+
+## LOLIN32 接线变化
+
+当前 RGB 数据为 GPIO4；传感器行地址为 16/17/18；八路数字输入为 36/39/34/35/32/33/25/26；电磁铁为 27；X STEP/DIR=19/21，Y STEP/DIR=22/23，共用 EN=13。GPIO34/35/36/39 只作输入，必须保留传感器板的外部 3.3 V 上拉。板载 LED 在 GPIO5，与 MAGNET 命令无关。完整排线表见 PCB_Connection_Map.md。

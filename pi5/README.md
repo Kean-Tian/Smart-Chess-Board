@@ -23,7 +23,7 @@ sh start.sh
 sh start.sh play --opponent local --skill 10 --movetime 3000
 sh start.sh play --opponent openrouter
 sh start.sh play --coaching --coach-white off --coach-black on
-sh start.sh board --port /dev/ttyACM0
+sh start.sh board --port /dev/ttyUSB0
 ```
 
 - `test`: checks Stockfish communication and moves; no ESP32 is required.

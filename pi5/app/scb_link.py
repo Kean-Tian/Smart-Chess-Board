@@ -66,11 +66,22 @@ class ScbLink:
         self._heartbeat.start()
 
     @classmethod
-    def open(cls, port="/dev/ttyACM0"):
+    def open(cls, port="/dev/ttyUSB0"):
         import serial  # pyserial is required only for a real connection.
-        device = serial.Serial(port, baudrate=115200, timeout=0.1, write_timeout=1)
-        device.reset_input_buffer()
-        return cls(device)
+        # CP2104 DTR/RTS are wired to EN/GPIO0. Set inactive states before
+        # opening; allow any driver-generated reset transient to settle.
+        device = serial.Serial(baudrate=115200, timeout=0.1, write_timeout=1)
+        device.dtr = False
+        device.rts = False
+        device.port = port
+        try:
+            device.open()
+            time.sleep(0.5)
+            device.reset_input_buffer()
+            return cls(device)
+        except BaseException:
+            device.close()
+            raise
 
     def _write(self, command, request_id):
         if not command or any(c in command for c in "\r\n\x00"):
@@ -205,7 +216,7 @@ class ScbLink:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Smart Chess Board USB terminal")
-    parser.add_argument("--port", default="/dev/ttyACM0")
+    parser.add_argument("--port", default="/dev/ttyUSB0")
     args = parser.parse_args()
     with ScbLink.open(args.port) as link:
         print("Connected. Outputs start DISARMED. Enter STATUS, SCAN, LED a1 20 0 0, or quit.")

@@ -45,7 +45,7 @@ def main(argv=None):
     add_opponent_arguments(parser, default=None)
     add_coaching_arguments(parser)
     parser.add_argument("--board", action="store_true", help="Play using the ESP32 physical board")
-    parser.add_argument("--port", default="/dev/ttyACM0")
+    parser.add_argument("--port", default="/dev/ttyUSB0")
     parser.add_argument("--set-api-key", action="store_true", help="Save or replace the locally remembered OpenRouter key")
     args = parser.parse_args(argv)
     if args.set_api_key:

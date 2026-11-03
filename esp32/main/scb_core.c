@@ -72,7 +72,7 @@ bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     c->row_ready_at = now + SCB_SCAN_SETTLE_US;
     c->frame_started_at = now;
     if (!io.show_leds(io.ctx, &c->leds)) return false;
-    emit(c, "HELLO SCB_ESP32C5 1");
+    emit(c, "HELLO SCB_LOLIN32 1");
     return true;
 }
 

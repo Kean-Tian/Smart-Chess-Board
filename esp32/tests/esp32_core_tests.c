@@ -66,7 +66,7 @@ static void test_board(void) {
 }
 static void test_protocol(void) {
     ScbCore c; Fake f; init(&c, &f);
-    contains(&f, "HELLO SCB_ESP32C5 1\n");
+    contains(&f, "HELLO SCB_LOLIN32 1\n");
     cmd(&c, "@7 PI", 100); cmd(&c, "NG\r\n", 200); contains(&f, "ACK 7 PING\n");
     cmd(&c, "@8 LED a1 20 0 0\n", 300); assert(c.leds.pixels[0].red == 20);
     unsigned renders = f.renders;
@@ -158,18 +158,25 @@ static void test_spec_timing_and_power_defaults(void) {
     }
     assert(c.scan_frames >= 19 && c.scan_misses == 0);
     const unsigned pins[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2,
-        6,7,8,9,10,23,24,25,SCB_PIN_USB_DM,SCB_PIN_USB_DP,SCB_PIN_MAGNET,
+        36,39,34,35,32,33,25,26,SCB_PIN_UART_TX,SCB_PIN_UART_RX,SCB_PIN_MAGNET,
         SCB_PIN_X_STEP,SCB_PIN_X_DIR,SCB_PIN_Y_STEP,SCB_PIN_Y_DIR,SCB_PIN_MOTOR_EN};
     assert(sizeof(pins) / sizeof(pins[0]) == 20);
-    const unsigned exposed[] = {2,3,4,5,6,7,8,9,10,11,12,15,23,24,25,26,27,28};
+    const unsigned exposed[] = {0,1,2,3,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39};
     for (unsigned i = 0; i < 20; ++i) {
         assert(pins[i] < SCB_GPIO_COUNT);
-        assert(pins[i] != 0 && pins[i] != 1);
-        if (pins[i] == SCB_PIN_USB_DM || pins[i] == SCB_PIN_USB_DP) continue;
+        assert(!(pins[i] >= 6 && pins[i] <= 11));
+        assert(pins[i] != 0 && pins[i] != 2 && pins[i] != 5 && pins[i] != 12 && pins[i] != 15);
         bool found = false;
         for (unsigned j = 0; j < sizeof(exposed)/sizeof(exposed[0]); ++j)
             if (pins[i] == exposed[j]) found = true;
         assert(found);
+    }
+    const unsigned outputs[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1,
+        SCB_PIN_ROW_A2, SCB_PIN_MAGNET, SCB_PIN_X_STEP, SCB_PIN_X_DIR,
+        SCB_PIN_Y_STEP, SCB_PIN_Y_DIR, SCB_PIN_MOTOR_EN};
+    for (unsigned i = 0; i < sizeof(outputs)/sizeof(outputs[0]); ++i) {
+        assert(outputs[i] < 34); /* GPIO34-39 cannot drive an output. */
+        assert(outputs[i] != SCB_PIN_UART_TX && outputs[i] != SCB_PIN_UART_RX);
     }
     for (unsigned i = 0; i < 20; ++i)
         for (unsigned j = i + 1; j < 20; ++j) assert(pins[i] != pins[j]);
