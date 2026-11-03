@@ -171,7 +171,7 @@ class CoachingTests(unittest.TestCase):
     def test_physical_coaching_waits_for_confirmed_human_move(self):
         class Link:
             def __init__(self): self.commands = []
-            def request(self, command): self.commands.append(command)
+            def request(self, command, **kwargs): self.commands.append(command)
         with Game() as game:
             coach, link = Coach(), Link()
             with CoachingSession(game, {"w": False, "b": True}, lambda: coach, lambda *_: None) as session:

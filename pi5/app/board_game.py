@@ -7,12 +7,14 @@ import select
 import sys
 import time
 from contextlib import ExitStack
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "rules" / "python"))
 from scb_rules import Game
 from scb_link import ScbLink, DeviceError
 from stockfish_engine import EngineError
+from software_limits import (DEFAULT_MOVE_TIME_MS, FEEDBACK_ACK_TIMEOUT_S, BOARD_EVENT_POLL_S)
 from openrouter_engine import OpenRouterError
 from opponents import add_opponent_arguments, create_opponent, create_openrouter
 from coaching import CoachingSession, add_coaching_arguments, configure_coaching
@@ -59,7 +61,7 @@ def expected_occupancy(fen, legal_move):
 
 
 class PhysicalGame:
-    def __init__(self, game, link, report=print, engine=None, computer="b", movetime_ms=500, coaching=None):
+    def __init__(self, game, link, report=print, engine=None, computer="b", movetime_ms=DEFAULT_MOVE_TIME_MS, coaching=None):
         self.game, self.link, self.report = game, link, report
         self.mask = None
         self.initialized = False
@@ -71,18 +73,57 @@ class PhysicalGame:
         self.computer_move = None
         self.opponent_failed = False
         self.coaching = coaching
+        self._executor = ThreadPoolExecutor(max_workers=1) if engine and hasattr(engine, "best_move") else None
+        self._search = None
+        self._search_fen = None
+
+    def close(self):
+        if self._executor:
+            self._executor.shutdown(wait=True, cancel_futures=True)
+            self._executor = None
+
+    def _mark(self, source, target, status):
+        self.link.request(f"MARK {source} {target} {status}", timeout=FEEDBACK_ACK_TIMEOUT_S)
 
     @property
     def opponent_name(self):
         return getattr(self.engine, "name", "Computer")
 
     def maybe_computer_turn(self):
+        if self._search:
+            if not self._search.done():
+                return
+            if self.game.fen() != self._search_fen or self.restore_required:
+                self._search.result()
+                self._search = None
+                return
+            if self.mask != occupancy(fen_board(self.game.fen())):
+                return
+            move = self._search.result()
+            self._search = None
+            if move is None:
+                return
+            if move not in self.game.legal_moves():
+                raise EngineError("Computer move failed authoritative rules validation")
+            self.computer_move = move
+            self._mark(move[:2], move[2:4], "LEGAL")
+            self.report(f"{self.opponent_name} > {move}. Execute this move on the physical board.")
+            return
         if (self.engine is None or not self.initialized or self.restore_required or
                 self.computer_move or self.opponent_failed or self.game.fen().split()[1] != self.computer or
                 self.mask != occupancy(fen_board(self.game.fen()))):
             return
         status = self.game.status()
         if status and status != "Check.":
+            return
+        if self._executor:
+            # Snapshot on this thread: never share the C rules object with the worker.
+            self._search_fen = self.game.fen()
+            legal = tuple(self.game.legal_moves())
+            history = tuple(self.game.move_history)
+            self._search = self._executor.submit(self.engine.best_move, self._search_fen,
+                                                 legal, self.movetime_ms, history)
+            self.report("Computer is thinking; board input remains active.")
             return
         try:
             move = self.engine.choose(self.game, self.movetime_ms)
@@ -96,7 +137,7 @@ class PhysicalGame:
         if move not in self.game.legal_moves():
             raise EngineError("Computer move failed authoritative rules validation")
         self.computer_move = move
-        self.link.request(f"MARK {move[:2]} {move[2:4]} LEGAL")
+        self._mark(move[:2], move[2:4], "LEGAL")
         self.report(f"{self.opponent_name} > {move}. Execute this move on the physical board.")
 
     def on_board(self, mask):
@@ -131,7 +172,7 @@ class PhysicalGame:
         if not choices:
             self.pending = None
             self.restore_required = True
-            self.link.request(f"MARK {move[:2]} {move[2:4]} ILLEGAL")
+            self._mark(move[:2], move[2:4], "ILLEGAL")
             self.report("Illegal move. Logical state unchanged; restore the board.")
             return False
         if len(choices) != 1:
@@ -147,7 +188,7 @@ class PhysicalGame:
             raise RuntimeError("Rules engine rejected its generated legal move")
         self.pending = None
         self.computer_move = None
-        self.link.request(f"MARK {uci[:2]} {uci[2:4]} LEGAL")
+        self._mark(uci[:2], uci[2:4], "LEGAL")
         self.report(self.game.board_text())
         if self.game.status():
             self.report(self.game.status())
@@ -170,6 +211,7 @@ def run(args):
         link = stack.enter_context(ScbLink.open(args.port))
         manager = PhysicalGame(game, link, engine=engine, computer=args.computer[0],
                                movetime_ms=args.movetime, coaching=coaching)
+        stack.callback(manager.close)
         if engine:
             print(f"Opponent: {engine.name}. Computer plays {args.computer}.")
         if coaching:
@@ -189,7 +231,7 @@ def run(args):
             print("Coaching commands: coach white on/off, coach black on/off, coach, hint.")
         while True:
             try:
-                frame = link.events.get(timeout=0.05)
+                frame = link.events.get(timeout=BOARD_EVENT_POLL_S)
                 if frame.kind == "BOARD":
                     manager.on_board(int(frame.payload, 16))
                 elif frame.kind == "EVENT" and frame.payload.startswith("MOVE "):
@@ -222,7 +264,7 @@ def run(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Pi rules console with ESP32-S3 sensor input")
+    parser = argparse.ArgumentParser(description="Pi rules console with ESP32-C5 sensor input")
     parser.add_argument("--port", default="/dev/ttyACM0")
     parser.add_argument("--mode", choices=["pvp", "pvc"], default="pvp")
     add_opponent_arguments(parser)

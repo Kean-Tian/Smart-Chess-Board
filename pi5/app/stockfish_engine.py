@@ -11,6 +11,8 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from software_limits import (DEFAULT_MOVE_TIME_MS, MAX_ENGINE_TURN_MS,
+                             DEFAULT_ENGINE_THREADS, DEFAULT_ENGINE_HASH_MB)
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLED = ROOT / "engines" / "stockfish" / "stockfish-linux-arm64-universal"
@@ -42,7 +44,8 @@ def resolve_engine(executable=None):
 
 
 class Stockfish:
-    def __init__(self, executable=None, threads=2, hash_mb=128, skill=10, startup_timeout=15):
+    def __init__(self, executable=None, threads=DEFAULT_ENGINE_THREADS,
+                 hash_mb=DEFAULT_ENGINE_HASH_MB, skill=10, startup_timeout=15):
         if not 1 <= threads <= 4 or not 16 <= hash_mb <= 512 or not 0 <= skill <= 20:
             raise ValueError("Use threads 1..4, hash 16..512 MB, skill 0..20")
         self.executable = resolve_engine(executable)
@@ -52,6 +55,7 @@ class Stockfish:
         self._recent = deque(maxlen=12)
         self._transaction = threading.Lock()
         self._closed = False
+        self.last_search_ms = None
         try:
             self.process = subprocess.Popen(
                 [str(self.executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -121,9 +125,10 @@ class Stockfish:
             self._send("ucinewgame")
             self._ready()
 
-    def best_move(self, fen, legal_moves, movetime_ms=500, history=None):
-        if not isinstance(movetime_ms, int) or not 50 <= movetime_ms <= 10000:
-            raise ValueError("movetime_ms must be 50..10000")
+    def best_move(self, fen, legal_moves, movetime_ms=DEFAULT_MOVE_TIME_MS, history=None):
+        # Short searches remain available to explicit diagnostic/test callers.
+        if not isinstance(movetime_ms, int) or not 50 <= movetime_ms <= MAX_ENGINE_TURN_MS:
+            raise ValueError("movetime_ms must be 50..5000 (game entry points use 2000..5000)")
         legal = tuple(legal_moves)
         if not legal:
             return None
@@ -138,15 +143,25 @@ class Stockfish:
             if not all(isinstance(m, str) and MOVE.fullmatch(m) for m in history):
                 raise ValueError("Invalid game history")
         with self._transaction:
-            self._ready()
-            if history is None:
-                self._send("position fen " + fen)
-            else:
-                # Preserve repetition history when using our start-position Game.
-                self._send("position startpos" + (" moves " + " ".join(history) if history else ""))
-            self._send(f"go movetime {movetime_ms} searchmoves " + " ".join(legal))
+            started = time.monotonic()
+            deadline = started + MAX_ENGINE_TURN_MS / 1000
             try:
-                result = self._until(lambda line: line.startswith("bestmove "), movetime_ms / 1000 + 3)
+                self._ready(min(1.0, deadline - time.monotonic()))
+                if history is None:
+                    self._send("position fen " + fen)
+                else:
+                    # Preserve repetition history when using our start-position Game.
+                    self._send("position startpos" + (" moves " + " ".join(history) if history else ""))
+                remaining_ms = int((deadline - time.monotonic()) * 1000) - 50
+                if remaining_ms < 1:
+                    raise TimeoutError("Engine turn exceeded the 5-second response budget")
+                search_ms = min(movetime_ms, remaining_ms)
+                self._send(f"go movetime {search_ms} searchmoves " + " ".join(legal))
+                result = self._until(lambda line: line.startswith("bestmove "),
+                                     min(search_ms / 1000 + 0.5, deadline - time.monotonic()))
+                self.last_search_ms = (time.monotonic() - started) * 1000
+                if self.last_search_ms >= MAX_ENGINE_TURN_MS:
+                    raise TimeoutError("Engine turn exceeded the 5-second response budget")
             except TimeoutError:
                 # An uncertain search is discarded; never reuse a stale bestmove.
                 try:
@@ -159,7 +174,7 @@ class Stockfish:
                 raise EngineError(f"Stockfish returned a move rejected by the rules layer: {move}")
             return move
 
-    def choose(self, game, movetime_ms=500):
+    def choose(self, game, movetime_ms=DEFAULT_MOVE_TIME_MS):
         return self.best_move(game.fen(), game.legal_moves(), movetime_ms,
                               getattr(game, "move_history", None))
 

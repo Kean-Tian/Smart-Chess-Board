@@ -1,6 +1,6 @@
 # Smart Chess Board
 
-Team 24. The ESP32-S3 controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
+Team 24. The ESP32-C5 controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
 
 ## Git LFS Setup
 
@@ -16,7 +16,7 @@ git lfs pull
 | Task | Start here |
 |---|---|
 | Modify Pi 5 features or choose a chess opponent | [pi5/](pi5/README.md) |
-| Modify ESP32-S3 firmware or GPIO settings, or flash the firmware | [esp32/](esp32/README.md) |
+| Modify ESP32-C5 firmware or GPIO settings, or flash the firmware | [esp32/](esp32/README.md) |
 | Play on the current Mac | Double-click `SCB_Computer_Test.command` |
 | Validate the software on the current Mac | `sh SCB_Computer_Test.command --check-only` |
 | View PCB schematics and the KiCad project | [hardware/](hardware/README.md) |
@@ -35,7 +35,7 @@ SCB/
 │   ├── tests/
 │   ├── setup.sh               Initial setup on the Pi
 │   └── start.sh               Startup on the Pi
-├── esp32/                     Standalone ESP-IDF / PlatformIO firmware project
+├── esp32/                     Standalone ESP-IDF firmware project for FireBeetle C5
 │   ├── main/                  GPIO configuration, control logic, and platform drivers
 │   ├── components/board_logic/  Debouncing, move events, and LED square mapping
 │   ├── tests/                 Control-logic tests without hardware
@@ -53,7 +53,9 @@ On the Mac, open Terminal, change to this directory, and run:
 sh SCB_Computer_Test.command
 ```
 
-This opens the opponent menu:
+Normal startup runs the software checks silently, then opens the opponent menu. Failed checks are displayed and prevent startup. Full output is saved in `tools/mac_test/latest_check.log`.
+
+The menu is:
 
 ```text
 1. Local Mode - Play with Stockfish
@@ -86,7 +88,7 @@ first; `SCB_RULES_LIBRARY` can select a specific compiled rules library.
 To skip the menu, pass `--opponent local` or `--opponent openrouter` to the Mac
 entry point. To start coaching directly, use
 `sh SCB_Computer_Test.command --coaching --coach-white off --coach-black on`.
-For nine automated test suites and real local-engine checks:
+For ten automated test suites and real local-engine checks:
 
 ```sh
 sh SCB_Computer_Test.command --check-only
@@ -111,3 +113,7 @@ Stockfish games do not require a network connection or an API key. OpenRouter ga
 
 Third-party source code and licenses are kept under `engines/` and `vendor/` in the Pi directory for offline operation and rebuilding.
 The old Pi direct-GPIO program and duplicate source files have been removed. The OpenRouter opponent is integrated alongside Stockfish in the current application. A complete pre-cleanup copy is stored outside the project.
+
+## Software Specification Targets
+
+The software now targets 100 Hz full-board scanning, two-frame debounce, asynchronous LED feedback, and a 3-second default engine search. See [Specification alignment](docs/Specification_Alignment.md) for configuration, USB timing diagnostics, and requirements that still need hardware measurements.

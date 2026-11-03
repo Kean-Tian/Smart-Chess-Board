@@ -1,10 +1,11 @@
 # Software Validation on the Current Mac
 
-Run `sh SCB_Computer_Test.command` from the project root to choose Local Mode or AI Mode. AI Mode remembers the key locally after its first hidden input; `--set-api-key` replaces it. Add `--check-only` to run the automated checks separately; these require the local Stockfish binary.
+Run `sh SCB_Computer_Test.command` from the project root to choose Local Mode or AI Mode. AI Mode remembers the key locally after its first hidden input; `--set-api-key` replaces it. Normal startup runs checks silently and records `latest_check.log`; failures are displayed and prevent startup. Add `--check-only` for full test output; these require the local Stockfish binary.
 
-- `check_software.py`: nine regression test suites and integration checks using real Stockfish and libchess. OpenRouter opponent and coaching responses are simulated; no API key or network is needed for tests.
+- `check_software.py`: ten regression test suites and integration checks using real Stockfish and libchess. OpenRouter opponent and coaching responses are simulated; no API key or network is needed for tests.
 - `binaries/`: runtime files and compiled test programs for the Apple Silicon Mac.
 - `BUILD_INFO.json`: runtime-file checksums and platform information.
+- `latest_check.log`: full output of the most recent normal-startup check (ignored by Git).
 - `latest_result.json`: the most recent host test result, generated automatically when the tests run.
 
 This directory does not contain the engine deployed to the Pi. The Pi's ARM64 Linux files are in `pi5/engines/stockfish/`.

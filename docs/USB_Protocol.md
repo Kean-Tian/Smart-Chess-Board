@@ -1,6 +1,6 @@
 # MCU–Pi USB 协议 v1
 
-ESP32-S3 内建 USB Serial/JTAG，USB-B 连接 Pi。Pi 通常出现 `/dev/ttyACM0`；macOS 使用实际 `/dev/cu.usbmodem...` 名称。115200 是串口客户端设置，USB 传输并不是 UART 位速率。
+FireBeetle 2 ESP32-C5 内建 USB Serial/JTAG，通过板载 USB-C 连接 Pi。Pi 通常出现 `/dev/ttyACM0`；macOS 使用实际 `/dev/cu.usbmodem...` 名称。115200 是串口客户端设置，USB 传输并不是 UART 位速率。
 
 ## 帧格式
 
@@ -9,7 +9,7 @@ ESP32-S3 内建 USB Serial/JTAG，USB-B 连接 Pi。Pi 通常出现 `/dev/ttyACM
 - 请求行含前缀最多 127 字节。溢出或含非 ASCII 控制字节时，丢弃整行直至 LF，防止尾部被误当作另一条命令。
 - 回复：`ACK 42 COMMAND`、`ERR 42 REASON`、`DONE 42 MOTION`。
 - `STATUS` 直接回复 `STATUS 42 armed=0 moving=0 magnet=0 origin=0 steps=0`。
-- 主动事件：`BOARD <16位HEX>`、`EVENT ...`、`FAULT ...`、`HELLO SCB_ESP32S3 1`。
+- 主动事件：`BOARD <16位HEX>`、`EVENT ...`、`FAULT ...`、`HELLO SCB_ESP32C5 1`。
 - BOARD/RAW 的 bit0=a1，bit63=h8。BOARD 是去抖后的完整帧，RAW 是最近完成扫描的完整原始帧。
 - TX 队列满时只丢整帧，不截断拼接；客户端可能超时。读状态可以重新查询，**运动请求不能自动重试**。
 
@@ -18,11 +18,13 @@ ESP32-S3 内建 USB Serial/JTAG，USB-B 连接 Pi。Pi 通常出现 `/dev/ttyACM
 | 请求 | 行为 |
 |---|---|
 | `PING` | 更新心跳。只有 PING 更新链路保活计时 |
+| `TIMING` | 返回整盘扫描帧数、最新/最大帧周期、>=20 ms 超限次数及消抖确认间隔（微秒） |
+| `PLATFORM` | 返回 LED 队列至 RMT 完成延迟、>=100 ms 超限/失败次数、内部空闲堆及历史最低值 |
 | `STATUS` | 返回使能、运动、电磁铁、人工参考、每格步数 |
 | `SCAN` | 报告稳定 BOARD；尚无稳定帧时 `NOT_READY` |
 | `RAW` | 报告最近完整 RAW 帧 |
 | `POLARITY LOW` / `HIGH` | 占位极性，重新建立去抖与事件基线 |
-| `LED e4 0 20 0` | 设置指定格子的 RGB（每通道 0..255），其他格保留 |
+| `LED e4 0 20 0` | 接受 RGB 0..255，每通道实际限制到 32 以降低资源负担；其他格保留 |
 | `LED_CLEAR` | 全部清零 |
 | `MARK e2 e4 LEGAL` | 清屏，源格蓝、目标格绿 |
 | `MARK e2 e5 ILLEGAL` | 清屏，源格和目标格红 |
@@ -72,3 +74,7 @@ STOP
 ```
 
 `200` 只是语法示例，不能当作这套机构的实测每格步数。GOTO/MOVE 只能在已确认步数、方向、人工参考、机构路径和电磁铁工作条件后使用。
+
+## 2026-10-29 时序更新
+
+整盘目标 100 Hz（10 ms），消抖为两张完整一致帧；首张候选帧到确认名义间隔 10 ms，不代表从物理变化到显示的总延迟。LED 采用独立任务和单项覆盖队列，ACK 表示已接受，较新的未发送状态可替换旧状态。PLATFORM 的 LED 延迟是入队至 RMT 完成，非光学测量。C5 上控制和 LED 是同一单核上的独立任务，RMT 使用无 DMA 的中断补充方式；实际时序需测量。Pi 在后台运行 Stockfish，默认 3 秒，游戏入口允许 2–5 秒；棋盘事件轮询为 5 ms。详细验收与未验证项见 Specification_Alignment.md。

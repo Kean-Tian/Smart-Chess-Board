@@ -12,7 +12,7 @@ sh setup.sh
 sh start.sh
 ```
 
-`setup.sh` creates a Python environment, builds the rules library using the bundled dependencies, runs eight Pi software test suites, and then checks the local Stockfish engine. OpenRouter opponent and coaching tests use simulated responses.
+`setup.sh` creates a Python environment, builds the rules library using the bundled dependencies, runs nine Pi software test suites, and then checks the local Stockfish engine. OpenRouter opponent and coaching tests use simulated responses.
 A network connection is needed to install system build tools if they are not already installed. Stockfish, libchess source code, and the pyserial wheel are included in this directory.
 
 Entry points:
@@ -20,7 +20,7 @@ Entry points:
 ```sh
 sh start.sh test
 sh start.sh
-sh start.sh play --opponent local --skill 10 --movetime 500
+sh start.sh play --opponent local --skill 10 --movetime 3000
 sh start.sh play --opponent openrouter
 sh start.sh play --coaching --coach-white off --coach-black on
 sh start.sh board --port /dev/ttyACM0
@@ -30,7 +30,7 @@ sh start.sh board --port /dev/ttyACM0
 - `play` (default): opens a menu with **Local Mode** (Stockfish), **AI Mode → Play with AI** (OpenRouter), and **AI Mode → AI Coaching** (two humans). Accepts UCI moves from the keyboard; enter `quit` to exit. `--opponent local|openrouter` skips the opponent menu; `--coaching` starts coaching setup directly.
 - `board`: opens the same opponent menu, then receives ESP32 board events. Computer moves are indicated by LEDs and confirmed through occupancy after manual execution. This mode does not automatically ARM or move the motors. You can also pass `--opponent local|openrouter`.
 - `--computer white` lets the computer play White; the default is Black.
-- `--skill 0..20` sets playing strength; `--movetime 50..10000` sets the target search time in milliseconds per move.
+- `--skill 0..20` sets playing strength; `--movetime 2000..5000` sets the target search time in milliseconds per move.
 
 `--skill` and `--movetime` configure Local Mode only. AI Mode keeps the original
 OpenRouter chat-completions method. Configure it in Terminal:
@@ -125,3 +125,9 @@ The Pi maintains the chess rules and logical board state. Both Stockfish and Ope
 This directory does not access Pi GPIO. All hardware operations are sent through the ESP32 USB protocol.
 
 Official references: [Stockfish 19](https://github.com/official-stockfish/Stockfish/releases/tag/sf_19), [UCI](https://official-stockfish.github.io/docs/stockfish-wiki/UCI-Protocol-and-Stockfish-Commands.html).
+
+## Timing and Resource Defaults
+
+Game search defaults to 3000 ms, one engine thread, and a 16 MiB Hash table in Pi memory. Board mode searches in a background worker and continues processing sensor events. Search results are revalidated against the current position before showing a move. LED commands use an 80 ms ACK timeout; this is not a measured end-to-end display latency.
+
+Run `python3 app/board_diagnostics.py --help` for target timing measurements over USB. Diagnostic engine searches may explicitly use shorter times than the game interface. See [Specification alignment](../docs/Specification_Alignment.md) for hardware validation limits.

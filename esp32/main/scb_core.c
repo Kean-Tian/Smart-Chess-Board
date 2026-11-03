@@ -9,6 +9,9 @@
 
 static const unsigned columns[8] = SCB_COLUMN_PINS;
 static const unsigned address[3] = {SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2};
+_Static_assert(SCB_SCAN_FRAME_US >= 8U * SCB_SCAN_SETTLE_US, "Frame shorter than row settling");
+_Static_assert(SCB_SCAN_FRAME_US < SCB_SCAN_LIMIT_US, "Full-board scan must exceed 50 Hz");
+_Static_assert(SCB_DEBOUNCE_SCANS >= 2U, "Require repeated stable observations");
 static void motion_tick(ScbCore *c, int64_t now);
 
 static void emit(ScbCore *c, const char *fmt, ...) {
@@ -67,8 +70,9 @@ bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     if (scb_debouncer_initialize(&c->debounce, SCB_DEBOUNCE_SCANS) < 0 ||
         !set_row(c, 0)) return false;
     c->row_ready_at = now + SCB_SCAN_SETTLE_US;
+    c->frame_started_at = now;
     if (!io.show_leds(io.ctx, &c->leds)) return false;
-    emit(c, "HELLO SCB_ESP32S3 1");
+    emit(c, "HELLO SCB_ESP32C5 1");
     return true;
 }
 
@@ -89,8 +93,20 @@ static void scan_tick(ScbCore *c, int64_t now) {
     }
     if (++c->row == 8) {
         c->row = 0;
+        if (c->scan_frames) {
+            int64_t gap = now - c->last_frame_at;
+            c->frame_us = (unsigned)(gap > UINT_MAX ? UINT_MAX : gap);
+            if (c->frame_us > c->max_frame_us) c->max_frame_us = c->frame_us;
+            if (gap >= SCB_SCAN_LIMIT_US) ++c->scan_misses;
+        }
+        c->last_frame_at = now;
+        ++c->scan_frames;
         memcpy(c->raw_frame, c->sampled, sizeof(c->raw_frame));
+        if (!c->debounce.has_candidate ||
+            memcmp(c->sampled, c->debounce.candidate, sizeof(c->sampled)))
+            c->debounce_started_at = now;
         if (scb_debouncer_update(&c->debounce, c->sampled, c->stable) > 0) {
+            c->debounce_us = (unsigned)(now - c->debounce_started_at);
             c->board_ready = true;
             board_report(c, false);
             /* During commanded robot travel, occupancy is telemetry, not a human move. */
@@ -110,7 +126,12 @@ static void scan_tick(ScbCore *c, int64_t now) {
         }
     }
     if (!set_row(c, c->row)) { scb_core_fault(c, "GPIO"); return; }
-    c->row_ready_at = now + SCB_SCAN_SETTLE_US;
+    if (c->row == 0) {
+        int64_t next = c->frame_started_at + SCB_SCAN_FRAME_US;
+        /* A delayed task never fabricates catch-up frames. */
+        c->frame_started_at = next > now ? next : now;
+        c->row_ready_at = c->frame_started_at + SCB_SCAN_SETTLE_US;
+    } else c->row_ready_at = now + SCB_SCAN_SETTLE_US;
 }
 
 static bool integer(const char *s, long lo, long hi, long *v) {
@@ -172,6 +193,20 @@ static void command(ScbCore *c, char *line, int64_t now) {
              c->armed, c->moving, c->magnet, c->origin_valid, c->steps_per_tile);
         return;
     }
+    if (!strcmp(cmd, "TIMING") && n == 1) {
+        emit(c, "TIMING %u frames=%u frame_us=%u max_us=%u misses=%u debounce_us=%u", id,
+             c->scan_frames, c->frame_us, c->max_frame_us, c->scan_misses, c->debounce_us);
+        return;
+    }
+    if (!strcmp(cmd, "PLATFORM") && n == 1) {
+        ScbPlatformStats s;
+        if (!c->io.stats || !c->io.stats(c->io.ctx, &s)) {
+            reply(c, "ERR", id, "UNAVAILABLE"); return;
+        }
+        emit(c, "PLATFORM %u led_us=%u max_us=%u late=%u failed=%u heap=%u min_heap=%u", id,
+             s.led_last_us, s.led_max_us, s.led_late, s.led_failed, s.heap_free, s.heap_min);
+        return;
+    }
     if ((!strcmp(cmd, "SCAN") || !strcmp(cmd, "RAW")) && n == 1) {
         if (!c->board_ready) { reply(c, "ERR", id, "NOT_READY"); return; }
         board_report(c, !strcmp(cmd, "RAW")); reply(c, "ACK", id, cmd); return;
@@ -201,6 +236,8 @@ static void command(ScbCore *c, char *line, int64_t now) {
         scb_move_tracker_initialize(&c->tracker); c->board_ready = false; c->row = 0;
         if (!set_row(c, 0)) { scb_core_fault(c, "GPIO"); return; }
         c->row_ready_at = now + SCB_SCAN_SETTLE_US;
+        c->frame_started_at = now;
+        c->scan_frames = c->frame_us = c->max_frame_us = c->scan_misses = c->debounce_us = 0;
         reply(c, "ACK", id, cmd); return;
     }
     if (!strcmp(cmd, "ORIGIN") && n == 2) {
@@ -231,6 +268,9 @@ static void command(ScbCore *c, char *line, int64_t now) {
         int sq = scb_square_index(args[1]); long r, g, b;
         if (sq < 0 || !integer(args[2], 0, 255, &r) || !integer(args[3], 0, 255, &g) ||
             !integer(args[4], 0, 255, &b)) goto bad_args;
+        if (r > SCB_LED_CHANNEL_LIMIT) r = SCB_LED_CHANNEL_LIMIT;
+        if (g > SCB_LED_CHANNEL_LIMIT) g = SCB_LED_CHANNEL_LIMIT;
+        if (b > SCB_LED_CHANNEL_LIMIT) b = SCB_LED_CHANNEL_LIMIT;
         scb_led_set_square(&c->leds, (unsigned)sq, (ScbRgb){(uint8_t)r, (uint8_t)g, (uint8_t)b});
         if (!c->io.show_leds(c->io.ctx, &c->leds)) { reply(c, "ERR", id, "LED"); return; }
         reply(c, "ACK", id, cmd); return;

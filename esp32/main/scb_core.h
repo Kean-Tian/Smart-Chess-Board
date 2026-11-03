@@ -8,12 +8,17 @@
 
 #define SCB_LINE_CAPACITY 128U
 typedef struct {
+    unsigned led_last_us, led_max_us, led_late, led_failed;
+    unsigned heap_free, heap_min;
+} ScbPlatformStats;
+typedef struct {
     void *ctx;
     bool (*write)(void *, unsigned pin, bool high);
     bool (*read)(void *, unsigned pin);
     bool (*pulse)(void *, unsigned pin); /* One HIGH/LOW pulse, >=5 us HIGH. */
     bool (*show_leds)(void *, const ScbLedGrid *);
     void (*emit)(void *, const char *line); /* Whole newline-terminated frames. */
+    bool (*stats)(void *, ScbPlatformStats *); /* Optional, platform measurements. */
 } ScbIo;
 
 typedef struct {
@@ -24,6 +29,8 @@ typedef struct {
     bool sampled[64], raw_frame[64], stable[64], board_ready, active_low;
     unsigned row;
     int64_t row_ready_at;
+    int64_t frame_started_at, last_frame_at, debounce_started_at;
+    unsigned scan_frames, frame_us, max_frame_us, scan_misses, debounce_us;
     bool armed, moving, magnet, origin_valid, magnet_wanted;
     unsigned steps_per_tile, move_id, ignore_frames;
     int x, y, target_x, target_y;

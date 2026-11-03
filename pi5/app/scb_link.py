@@ -20,7 +20,7 @@ def parse_frame(line: str) -> Frame:
     if not parts:
         raise ValueError("Empty frame")
     kind = parts[0]
-    if kind in {"ACK", "ERR", "DONE", "STATUS"}:
+    if kind in {"ACK", "ERR", "DONE", "STATUS", "TIMING", "PLATFORM"}:
         if len(parts) < 3 or not parts[1].isdigit():
             raise ValueError("Malformed reply")
         return Frame(kind, int(parts[1]), parts[2])
@@ -162,7 +162,7 @@ class ScbLink:
                 frame = pending.get(timeout=remaining)
                 if frame.kind == "ERR":
                     raise DeviceError(frame.payload)
-                if frame.kind == "DONE" or (not wait_done and frame.kind in {"ACK", "STATUS"}):
+                if frame.kind == "DONE" or (not wait_done and frame.kind in {"ACK", "STATUS", "TIMING", "PLATFORM"}):
                     return frame
         except queue.Empty as exc:
             # Never replay an uncertain movement request.

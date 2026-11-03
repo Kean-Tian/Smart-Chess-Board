@@ -8,13 +8,8 @@ import warnings
 from openrouter_engine import OpenRouter, OpenRouterError
 from api_key_store import load_api_key, save_api_key
 from stockfish_engine import Stockfish
-
-
-def search_time(value):
-    duration = int(value)
-    if not 50 <= duration <= 10000:
-        raise argparse.ArgumentTypeError("movetime must be 50..10000 milliseconds")
-    return duration
+from software_limits import (game_move_time, DEFAULT_MOVE_TIME_MS,
+                             DEFAULT_ENGINE_THREADS, DEFAULT_ENGINE_HASH_MB)
 
 
 def add_opponent_arguments(parser, default="local"):
@@ -22,12 +17,12 @@ def add_opponent_arguments(parser, default="local"):
                         help="local = Stockfish; openrouter = AI Mode")
     parser.add_argument("--computer", choices=["white", "black"], default="black")
     parser.add_argument("--engine", help="Local Stockfish executable")
-    parser.add_argument("--movetime", type=search_time, default=500,
-                        help="Local search time in milliseconds (50..10000)")
+    parser.add_argument("--movetime", type=game_move_time, default=DEFAULT_MOVE_TIME_MS,
+                        help="Local search time in milliseconds (2000..5000; default 3000)")
     parser.add_argument("--skill", type=int, choices=range(21), default=10,
                         help="Local Stockfish skill (0..20)")
-    parser.add_argument("--threads", type=int, default=2)
-    parser.add_argument("--hash", type=int, default=128, dest="hash_mb")
+    parser.add_argument("--threads", type=int, default=DEFAULT_ENGINE_THREADS)
+    parser.add_argument("--hash", type=int, default=DEFAULT_ENGINE_HASH_MB, dest="hash_mb")
     parser.add_argument("--model", help="OpenRouter model ID (or OPENROUTER_MODEL)")
 
 

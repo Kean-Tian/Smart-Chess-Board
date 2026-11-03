@@ -7,7 +7,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 from stockfish_engine import Stockfish, EngineError, START_FEN
 
-FAKE = '''import os,sys
+FAKE = '''import os,sys,time
 mode=os.environ.get("SCB_FAKE_MODE", "normal")
 for command in sys.stdin:
  command=command.strip()
@@ -21,6 +21,7 @@ for command in sys.stdin:
   print("uciok",flush=True)
  elif command=="isready":print("readyok",flush=True)
  elif command.startswith("go "):
+  if mode=="slow_search":time.sleep(0.2)
   move=command.split("searchmoves ")[1].split()[0]
   print("info depth 1 nodes 42",flush=True)
   print("bestmove "+("a1a9" if mode=="illegal" else move),flush=True)
@@ -48,8 +49,8 @@ class EngineTests(unittest.TestCase):
                 self.assertIsNone(engine.best_move(START_FEN, [], 50))
             self.assertIsNotNone(engine.process.poll())
         commands = self.log.read_text()
-        self.assertIn("setoption name Threads value 2", commands)
-        self.assertIn("setoption name Hash value 128", commands)
+        self.assertIn("setoption name Threads value 1", commands)
+        self.assertIn("setoption name Hash value 16", commands)
         self.assertIn("position startpos moves e2e4", commands)
         self.assertIn("go movetime 50 searchmoves e2e4 d2d4", commands)
         self.assertIn("quit", commands)
@@ -76,6 +77,19 @@ class EngineTests(unittest.TestCase):
         with patch.dict(os.environ, {"SCB_FAKE_MODE": "no_uci"}):
             with self.assertRaises(TimeoutError):
                 Stockfish(self.path, startup_timeout=0.05)
+
+    def test_turn_deadline_rejects_late_results_and_closes_engine(self):
+        with patch.dict(os.environ, {"SCB_FAKE_MODE": "slow_search"}), \
+                patch("stockfish_engine.MAX_ENGINE_TURN_MS", 100):
+            with Stockfish(self.path) as engine:
+                with self.assertRaises(TimeoutError):
+                    engine.best_move(START_FEN, ["e2e4"], 50)
+                self.assertTrue(engine._closed)
+
+    def test_search_cannot_request_more_than_five_seconds(self):
+        with Stockfish(self.path) as engine:
+            with self.assertRaises(ValueError):
+                engine.best_move(START_FEN, ["e2e4"], 5001)
 
 
 if __name__ == "__main__":

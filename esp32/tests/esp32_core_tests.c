@@ -5,18 +5,24 @@
 #include <string.h>
 
 typedef struct {
-    bool pins[49], board[64], fail_pulse;
+    bool pins[SCB_GPIO_COUNT], board[64], fail_pulse;
     unsigned x_pulses, y_pulses, renders;
     char output[65536];
     size_t used;
 } Fake;
 static bool write_pin(void *v, unsigned pin, bool high) {
-    Fake *f = v; assert(pin < 49); f->pins[pin] = high; return true;
+    Fake *f = v; assert(pin < SCB_GPIO_COUNT); f->pins[pin] = high; return true;
 }
 static bool read_pin(void *v, unsigned pin) {
-    Fake *f = v; assert(pin >= 7 && pin <= 14);
-    unsigned row = (unsigned)f->pins[4] | ((unsigned)f->pins[5] << 1) | ((unsigned)f->pins[6] << 2);
-    return !f->board[row * 8 + pin - 7];
+    Fake *f = v;
+    const unsigned columns[] = SCB_COLUMN_PINS;
+    unsigned col = 0;
+    while (col < 8 && columns[col] != pin) ++col;
+    assert(col < 8);
+    unsigned row = (unsigned)f->pins[SCB_PIN_ROW_A0] |
+                   ((unsigned)f->pins[SCB_PIN_ROW_A1] << 1) |
+                   ((unsigned)f->pins[SCB_PIN_ROW_A2] << 2);
+    return !f->board[row * 8 + col];
 }
 static bool pulse(void *v, unsigned pin) {
     Fake *f = v;
@@ -36,8 +42,9 @@ static void emit(void *v, const char *s) {
 }
 static void init(ScbCore *c, Fake *f) {
     memset(f, 0, sizeof(*f));
-    assert(scb_core_init(c, (ScbIo){f, write_pin, read_pin, pulse, leds, emit}, 1));
-    assert(f->pins[38] && !f->pins[33]);
+    assert(scb_core_init(c, (ScbIo){.ctx = f, .write = write_pin, .read = read_pin,
+        .pulse = pulse, .show_leds = leds, .emit = emit}, 1));
+    assert(f->pins[SCB_PIN_MOTOR_EN] && !f->pins[SCB_PIN_MAGNET]);
 }
 static void cmd(ScbCore *c, const char *s, int64_t now) { scb_core_feed(c, s, strlen(s), now); }
 static void ticks(ScbCore *c, int64_t start, int count) {
@@ -59,6 +66,7 @@ static void test_board(void) {
 }
 static void test_protocol(void) {
     ScbCore c; Fake f; init(&c, &f);
+    contains(&f, "HELLO SCB_ESP32C5 1\n");
     cmd(&c, "@7 PI", 100); cmd(&c, "NG\r\n", 200); contains(&f, "ACK 7 PING\n");
     cmd(&c, "@8 LED a1 20 0 0\n", 300); assert(c.leds.pixels[0].red == 20);
     unsigned renders = f.renders;
@@ -81,14 +89,14 @@ static void test_motion(void) {
     cmd(&c, "@1 MOVE a1 b1\n", 10); contains(&f, "ERR 1 NOT_ARMED\n");
     arm(&c); cmd(&c, "@2 GOTO b1\n", 2000); ticks(&c, 2000, 45);
     assert(f.x_pulses == 3 && !f.y_pulses && c.x == 3);
-    assert(!c.moving && f.pins[38]); contains(&f, "DONE 2 MOTION\n");
+    assert(!c.moving && f.pins[SCB_PIN_MOTOR_EN]); contains(&f, "DONE 2 MOTION\n");
     cmd(&c, "@3 MOVE a1 a2\n", 49000); contains(&f, "ERR 3 SOURCE_NOT_ALIGNED\n");
-    cmd(&c, "@4 MOVE b1 b2\n", 50000); assert(c.magnet && !f.pins[38]);
+    cmd(&c, "@4 MOVE b1 b2\n", 50000); assert(c.magnet && !f.pins[SCB_PIN_MOTOR_EN]);
     ticks(&c, 50000, 150); assert(f.y_pulses == 3 && !c.moving && !c.magnet);
     contains(&f, "DONE 4 MOTION\n");
     cmd(&c, "HOME\n", 201000); contains(&f, "NO_HOME_SWITCHES");
     cmd(&c, "@5 GOTO h8\n@6 STOP\n", 202000);
-    assert(!c.armed && !c.moving && !c.origin_valid && !c.magnet && f.pins[38]);
+    assert(!c.armed && !c.moving && !c.origin_valid && !c.magnet && f.pins[SCB_PIN_MOTOR_EN]);
     contains(&f, "ERR 5 STOPPED\n"); contains(&f, "ACK 6 STOP\n");
 }
 static void test_watchdogs(void) {
@@ -96,7 +104,7 @@ static void test_watchdogs(void) {
     cmd(&c, "@21 MOVE a1 h8\n", 2000);
     /* Late PING does not rescue stale armed/motion state. */
     cmd(&c, "@22 PING\n", 3000000);
-    assert(!c.armed && !c.moving && !c.magnet && f.pins[38]);
+    assert(!c.armed && !c.moving && !c.magnet && f.pins[SCB_PIN_MOTOR_EN]);
     contains(&f, "ERR 21 LINK_TIMEOUT\n");
     init(&c, &f); arm(&c); cmd(&c, "MAGNET ON\n", 2000);
     for (int i = 1; i <= 6; ++i) {
@@ -107,7 +115,7 @@ static void test_watchdogs(void) {
     assert(!c.magnet && !c.armed); contains(&f, "FAULT MAGNET_TIMEOUT\n");
     init(&c, &f); arm(&c); f.fail_pulse = true;
     cmd(&c, "GOTO b1\n", 2000); scb_core_tick(&c, 4000);
-    assert(!c.moving && !c.armed && f.pins[38]); contains(&f, "FAULT GPIO\n");
+    assert(!c.moving && !c.armed && f.pins[SCB_PIN_MOTOR_EN]); contains(&f, "FAULT GPIO\n");
 }
 static void test_ambiguous_and_led_mapping(void) {
     ScbMoveTracker t; ScbBoardEvent e; bool b[64] = {0};
@@ -122,7 +130,52 @@ static void test_ambiguous_and_led_mapping(void) {
     assert(g.pixels[scb_led_index(&g, 12)].blue == 20);
     assert(g.pixels[scb_led_index(&g, 28)].green == 20);
 }
+static void test_spec_timing_and_power_defaults(void) {
+    ScbCore c; Fake f; init(&c, &f);
+    /* 1 ms control schedule: full frames arrive at 8, 18, 28 ... ms. */
+    ticks(&c, 1, 1000);
+    assert(c.scan_frames == 100 && c.frame_us == 10000 && c.max_frame_us == 10000);
+    assert(c.scan_misses == 0 && c.debounce_us == 10000);
+    f.board[12] = true;
+    ticks(&c, 1000001, 30);
+    assert(c.stable[12] && c.debounce_us == 10000);
+    cmd(&c, "@31 TIMING\n", 1030002);
+    contains(&f, "TIMING 31 frames=103 frame_us=10000 max_us=10000 misses=0 debounce_us=10000\n");
+    cmd(&c, "LED a1 255 100 40\n", 1030003);
+    assert(c.leds.pixels[0].red == SCB_LED_CHANNEL_LIMIT);
+    assert(c.leds.pixels[0].green == SCB_LED_CHANNEL_LIMIT);
+    assert(c.leds.pixels[0].blue == SCB_LED_CHANNEL_LIMIT);
+    cmd(&c, "@32 PLATFORM\n", 1030004); contains(&f, "ERR 32 UNAVAILABLE\n");
+    /* A delayed schedule must be measured, not reported as the target rate. */
+    ticks(&c, 1100001, 30);
+    assert(c.scan_misses > 0 && c.max_frame_us >= SCB_SCAN_LIMIT_US);
+    /* Sensor/LED traffic while moving still advances complete scan frames. */
+    init(&c, &f); arm(&c);
+    cmd(&c, "GOTO h8\n", 2000);
+    for (int i = 1; i <= 200; ++i) {
+        if (i % 5 == 0) cmd(&c, "LED a1 10 0 0\n", 2000 + i * 1000);
+        scb_core_tick(&c, 2000 + i * 1000);
+    }
+    assert(c.scan_frames >= 19 && c.scan_misses == 0);
+    const unsigned pins[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2,
+        6,7,8,9,10,23,24,25,SCB_PIN_USB_DM,SCB_PIN_USB_DP,SCB_PIN_MAGNET,
+        SCB_PIN_X_STEP,SCB_PIN_X_DIR,SCB_PIN_Y_STEP,SCB_PIN_Y_DIR,SCB_PIN_MOTOR_EN};
+    assert(sizeof(pins) / sizeof(pins[0]) == 20);
+    const unsigned exposed[] = {2,3,4,5,6,7,8,9,10,11,12,15,23,24,25,26,27,28};
+    for (unsigned i = 0; i < 20; ++i) {
+        assert(pins[i] < SCB_GPIO_COUNT);
+        assert(pins[i] != 0 && pins[i] != 1);
+        if (pins[i] == SCB_PIN_USB_DM || pins[i] == SCB_PIN_USB_DP) continue;
+        bool found = false;
+        for (unsigned j = 0; j < sizeof(exposed)/sizeof(exposed[0]); ++j)
+            if (pins[i] == exposed[j]) found = true;
+        assert(found);
+    }
+    for (unsigned i = 0; i < 20; ++i)
+        for (unsigned j = i + 1; j < 20; ++j) assert(pins[i] != pins[j]);
+}
 int main(void) {
     test_board(); test_protocol(); test_motion(); test_watchdogs(); test_ambiguous_and_led_mapping();
+    test_spec_timing_and_power_defaults();
     puts("ESP32 portable-core tests passed: sensing, framing, outputs, motion, watchdogs.");
 }

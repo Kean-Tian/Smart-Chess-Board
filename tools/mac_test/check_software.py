@@ -21,7 +21,7 @@ def main():
         subprocess.run([str(ROOT / "tools" / "mac_test" / "binaries" / binary)], check=True, env=native_env)
     for test in ["scb_link_tests.py", "board_game_tests.py",
                  "stockfish_engine_tests.py", "stockfish_board_tests.py",
-                 "openrouter_engine_tests.py", "play_mode_tests.py", "coaching_tests.py"]:
+                 "openrouter_engine_tests.py", "play_mode_tests.py", "coaching_tests.py", "specification_tests.py"]:
         subprocess.run([sys.executable, str(ROOT / "pi5" / "tests" / test)], check=True)
     result = self_test()
     moves = []
@@ -36,12 +36,12 @@ def main():
                 raise RuntimeError("真实引擎返回的走法未通过规则检查")
             moves.append(move)
         result.update({"rules_integration": "passed", "plies": len(moves), "moves": moves,
-                       "final_fen": game.fen(), "test_suites_passed": 9,
+                       "final_fen": game.fen(), "test_suites_passed": 10,
                        "test_platform": platform.platform(),
                        "pi_or_esp32_hardware_tested": False})
     report = ROOT / "tools" / "mac_test" / "latest_result.json"
     report.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("\nPASS：九组测试及真实 Stockfish 对弈验证通过。OpenRouter 对弈和 Coaching 使用模拟响应测试。", flush=True)
+    print("\nPASS：十组测试及真实 Stockfish 对弈验证通过。OpenRouter 对弈和 Coaching 使用模拟响应测试。", flush=True)
     return 0
 
 

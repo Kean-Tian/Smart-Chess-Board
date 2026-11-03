@@ -7,24 +7,43 @@
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
+#include "soc/soc_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include <string.h>
 
-#if defined(CONFIG_SPIRAM) || defined(CONFIG_ESPTOOLPY_OCT_FLASH)
-#error "This PCB uses GPIO33-37 for motion/magnet: disable octal flash and all PSRAM."
+#if !CONFIG_IDF_TARGET_ESP32C5
+#error "This firmware targets FireBeetle 2 ESP32-C5 (DFR1222)."
 #endif
+#if defined(CONFIG_SPIRAM)
+#error "DFR1222 N4 has no PSRAM; GPIO15 is used by the electromagnet output."
+#endif
+_Static_assert(SOC_CPU_CORES_NUM == 1, "C5 task layout expects one application CPU");
+_Static_assert(SCB_PIN_USB_DM == 13 && SCB_PIN_USB_DP == 14, "Keep native C5 USB pins reserved");
 
 static ScbCore core;
 static QueueHandle_t tx_queue;
+static QueueHandle_t led_queue;
+static portMUX_TYPE stats_lock = portMUX_INITIALIZER_UNLOCKED;
+static ScbPlatformStats platform_stats;
+typedef struct {
+    ScbLedGrid grid;
+    int64_t queued_at;
+} LedFrame;
 static rmt_channel_handle_t led_channel;
 static rmt_encoder_handle_t led_encoder;
 static rmt_symbol_word_t symbols[SCB_LED_COUNT * 24U + 1U];
 
 static bool write_pin(void *ctx, unsigned pin, bool high) {
     (void)ctx;
-    return gpio_set_level((gpio_num_t)pin, high) == ESP_OK;
+    if (gpio_set_level((gpio_num_t)pin, high) != ESP_OK) return false;
+    if (pin == SCB_PIN_Y_DIR && high) {
+        esp_rom_delay_us(SCB_STEP_HIGH_US);
+        return gpio_get_level((gpio_num_t)pin) != 0; /* BOOT held or external pull-down. */
+    }
+    return true;
 }
 static bool read_pin(void *ctx, unsigned pin) {
     (void)ctx;
@@ -38,8 +57,7 @@ static bool pulse_pin(void *ctx, unsigned pin) {
     esp_rom_delay_us(SCB_STEP_HIGH_US);
     return gpio_set_level((gpio_num_t)pin, 0) == ESP_OK;
 }
-static bool show_leds(void *ctx, const ScbLedGrid *grid) {
-    (void)ctx;
+static bool transmit_leds(const ScbLedGrid *grid) {
     size_t n = 0;
     for (unsigned i = 0; i < SCB_LED_COUNT; ++i) {
         const uint8_t bytes[] = {grid->pixels[i].green, grid->pixels[i].red, grid->pixels[i].blue};
@@ -59,7 +77,42 @@ static bool show_leds(void *ctx, const ScbLedGrid *grid) {
     const rmt_transmit_config_t config = {.loop_count = 0};
     if (rmt_transmit(led_channel, led_encoder, symbols, n * sizeof(symbols[0]), &config) != ESP_OK)
         return false;
-    return rmt_tx_wait_all_done(led_channel, 100) == ESP_OK;
+    return rmt_tx_wait_all_done(led_channel, 20) == ESP_OK;
+}
+static bool show_leds(void *ctx, const ScbLedGrid *grid) {
+    (void)ctx;
+    LedFrame frame = {.grid = *grid, .queued_at = esp_timer_get_time()};
+    /* Copy the pixels: the control task may immediately update its own grid. */
+    return xQueueOverwrite(led_queue, &frame) == pdTRUE;
+}
+static bool read_stats(void *ctx, ScbPlatformStats *out) {
+    (void)ctx;
+    portENTER_CRITICAL(&stats_lock);
+    *out = platform_stats;
+    portEXIT_CRITICAL(&stats_lock);
+    out->heap_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    out->heap_min = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    return true;
+}
+static void led_writer(void *unused) {
+    (void)unused;
+    LedFrame frame;
+    for (;;) {
+        if (xQueueReceive(led_queue, &frame, portMAX_DELAY) != pdTRUE) continue;
+        bool ok = transmit_leds(&frame.grid);
+        unsigned elapsed = (unsigned)(esp_timer_get_time() - frame.queued_at);
+        portENTER_CRITICAL(&stats_lock);
+        platform_stats.led_last_us = elapsed;
+        if (elapsed > platform_stats.led_max_us) platform_stats.led_max_us = elapsed;
+        if (elapsed >= SCB_FEEDBACK_LIMIT_US) ++platform_stats.led_late;
+        if (!ok) ++platform_stats.led_failed;
+        portEXIT_CRITICAL(&stats_lock);
+        if (!ok) {
+            /* Quiesce the channel before reusing the in-flight symbol buffer. */
+            ESP_ERROR_CHECK(rmt_disable(led_channel));
+            ESP_ERROR_CHECK(rmt_enable(led_channel));
+        }
+    }
 }
 static void emit_frame(void *ctx, const char *line) {
     (void)ctx;
@@ -97,8 +150,36 @@ static void configure_gpio(void) {
     const gpio_config_t out_config = {.pin_bit_mask = output_mask, .mode = GPIO_MODE_OUTPUT};
     const gpio_config_t in_config = {.pin_bit_mask = input_mask, .mode = GPIO_MODE_INPUT};
     ESP_ERROR_CHECK(gpio_config(&out_config));
+    /* GPIO28 shares the physical BOOT button to GND. Open-drain avoids a
+     * push-pull HIGH short if the button is pressed. Never press it in motion:
+     * the button would still override the requested Y direction.
+     */
+    const gpio_config_t boot_dir = {.pin_bit_mask = UINT64_C(1) << SCB_PIN_Y_DIR,
+        .mode = GPIO_MODE_INPUT_OUTPUT_OD, .pull_up_en = GPIO_PULLUP_ENABLE};
+    ESP_ERROR_CHECK(gpio_config(&boot_dir));
     /* The sensor PCB already has 3.3 V LM339 pull-ups. */
     ESP_ERROR_CHECK(gpio_config(&in_config));
+}
+static void control_task(void *unused) {
+    (void)unused;
+    TickType_t wake = xTaskGetTickCount();
+    unsigned led_failures = 0;
+    for (;;) {
+        uint8_t buf[64];
+        portENTER_CRITICAL(&stats_lock);
+        unsigned failures = platform_stats.led_failed;
+        portEXIT_CRITICAL(&stats_lock);
+        if (failures != led_failures) {
+            led_failures = failures;
+            /* Only this task owns ScbCore and controls motor shutdown. */
+            scb_core_fault(&core, "LED_OUTPUT");
+        }
+        scb_core_tick(&core, esp_timer_get_time());
+        int n = usb_serial_jtag_read_bytes(buf, sizeof(buf), 0);
+        if (n > 0) scb_core_feed(&core, buf, (size_t)n, esp_timer_get_time());
+        /* Absolute scheduling avoids adding work time to every 1 ms delay. */
+        xTaskDelayUntil(&wake, pdMS_TO_TICKS(SCB_CONTROL_TICK_MS));
+    }
 }
 void app_main(void) {
     configure_gpio();
@@ -106,28 +187,23 @@ void app_main(void) {
     usb_serial_jtag_driver_config_t usb = {.tx_buffer_size = 2048, .rx_buffer_size = 1024};
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb));
     tx_queue = xQueueCreate(32, SCB_LINE_CAPACITY);
-    configASSERT(tx_queue);
+    led_queue = xQueueCreate(1, sizeof(LedFrame));
+    configASSERT(tx_queue && led_queue);
     configASSERT(xTaskCreate(usb_writer, "scb_usb_tx", 3072, NULL, 4, NULL) == pdPASS);
     const rmt_tx_channel_config_t rmt = {.gpio_num = SCB_PIN_LED,
         .clk_src = RMT_CLK_SRC_DEFAULT, .resolution_hz = 10000000,
-        .mem_block_symbols = 1024, .trans_queue_depth = 1, .flags.with_dma = true};
+        .mem_block_symbols = 2 * SOC_RMT_MEM_WORDS_PER_CHANNEL,
+        .trans_queue_depth = 1, .flags.with_dma = false};
     ESP_ERROR_CHECK(rmt_new_tx_channel(&rmt, &led_channel));
     const rmt_copy_encoder_config_t encoder = {};
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&encoder, &led_encoder));
     ESP_ERROR_CHECK(rmt_enable(led_channel));
+    configASSERT(xTaskCreate(led_writer, "scb_led", 3072, NULL, 3, NULL) == pdPASS);
     ScbIo io = {.write = write_pin, .read = read_pin, .pulse = pulse_pin,
-        .show_leds = show_leds, .emit = emit_frame};
+        .show_leds = show_leds, .emit = emit_frame, .stats = read_stats};
     if (!scb_core_init(&core, io, esp_timer_get_time())) {
         scb_core_fault(&core, "INIT");
         for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    for (;;) {
-        uint8_t buf[64];
-        int64_t now = esp_timer_get_time();
-        scb_core_tick(&core, now);
-        int n = usb_serial_jtag_read_bytes(buf, sizeof(buf), 0);
-        if (n > 0) scb_core_feed(&core, buf, (size_t)n, esp_timer_get_time());
-        /* Scan advances one row per settling interval; motion never blocks it. */
-        vTaskDelay(1);
-    }
+    configASSERT(xTaskCreate(control_task, "scb_control", 8192, NULL, 10, NULL) == pdPASS);
 }

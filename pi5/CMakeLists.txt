@@ -50,7 +50,7 @@ set_target_properties(libchess_adapter_tests PROPERTIES LINKER_LANGUAGE CXX RUNT
 add_test(NAME libchess_adapter_tests COMMAND libchess_adapter_tests)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
-    foreach(test scb_link_tests board_game_tests stockfish_engine_tests stockfish_board_tests openrouter_engine_tests play_mode_tests coaching_tests)
+    foreach(test scb_link_tests board_game_tests stockfish_engine_tests stockfish_board_tests openrouter_engine_tests play_mode_tests coaching_tests specification_tests)
         add_test(NAME ${test} COMMAND ${Python3_EXECUTABLE} "${SCB_PI5_ROOT}/tests/${test}.py")
     endforeach()
     set_tests_properties(stockfish_board_tests play_mode_tests coaching_tests PROPERTIES ENVIRONMENT "SCB_RULES_LIBRARY=$<TARGET_FILE:scb_rules>")

@@ -20,3 +20,4 @@ tools/mac_test/latest_result.json
 *.kicad_sch-bak
 *.kicad_pcb-bak
 !tools/mac_test/binaries/libscb_rules.dylib
+tools/mac_test/latest_check.log

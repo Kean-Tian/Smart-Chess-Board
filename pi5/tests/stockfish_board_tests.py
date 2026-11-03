@@ -1,5 +1,7 @@
 import sys
 import unittest
+import threading
+import time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 from board_game import PhysicalGame, occupancy, fen_board, expected_occupancy
@@ -8,12 +10,12 @@ from scb_rules import Game
 
 class Link:
     def __init__(self): self.commands = []
-    def request(self, command): self.commands.append(command)
+    def request(self, command, **kwargs): self.commands.append(command)
 
 
 class Engine:
-    def choose(self, game, movetime):
-        assert "e7e5" in game.legal_moves()
+    def best_move(self, fen, legal, movetime, history):
+        assert "e7e5" in legal
         return "e7e5"
 
 
@@ -21,6 +23,7 @@ class BoardEngineTests(unittest.TestCase):
     def start_game(self, game):
         link = Link()
         manager = PhysicalGame(game, link, lambda *_: None, engine=Engine())
+        self.addCleanup(manager.close)
         manager.on_board(occupancy(fen_board(game.fen())))
         manager.on_board(expected_occupancy(game.fen(), "e2e4"))
         self.assertTrue(manager.try_move("e2e4"))
@@ -30,6 +33,8 @@ class BoardEngineTests(unittest.TestCase):
         with Game() as game:
             manager, link = self.start_game(game)
             before = game.fen()
+            manager.maybe_computer_turn()
+            manager._search.result(timeout=1)
             manager.maybe_computer_turn()
             self.assertEqual(game.fen(), before)
             self.assertEqual(manager.computer_move, "e7e5")
@@ -44,6 +49,8 @@ class BoardEngineTests(unittest.TestCase):
         with Game() as game:
             manager, _ = self.start_game(game)
             manager.maybe_computer_turn()
+            manager._search.result(timeout=1)
+            manager.maybe_computer_turn()
             before = game.fen()
             manager.on_board(expected_occupancy(game.fen(), "e7e6"))
             self.assertFalse(manager.try_move("e7e6"))
@@ -51,6 +58,39 @@ class BoardEngineTests(unittest.TestCase):
             self.assertTrue(manager.restore_required)
             manager.on_board(occupancy(fen_board(game.fen())))
             self.assertFalse(manager.restore_required)
+            self.assertEqual(manager.computer_move, "e7e5")
+
+    def test_search_does_not_block_sensor_events_or_use_live_rules_in_worker(self):
+        ready, release = threading.Event(), threading.Event()
+        class SlowEngine:
+            def best_move(self, fen, legal, movetime, history):
+                assert isinstance(fen, str) and isinstance(legal, tuple) and isinstance(history, tuple)
+                ready.set()
+                if not release.wait(2):
+                    raise RuntimeError("test did not release search")
+                return "e7e5"
+        with Game() as game:
+            manager, link = self.start_game(game)
+            manager.engine = SlowEngine()
+            started = time.monotonic()
+            manager.maybe_computer_turn()
+            self.assertLess(time.monotonic() - started, 0.1)
+            self.assertTrue(ready.wait(1))
+            try:
+                # Input remains processable before the search has returned.
+                lifted = occupancy(fen_board(game.fen())) & ~(1 << 52)
+                manager.on_board(lifted)
+                self.assertEqual(manager.mask, lifted)
+                manager.maybe_computer_turn()
+                self.assertIsNone(manager.computer_move)
+                self.assertFalse(manager._search.done())
+            finally:
+                release.set()
+            manager._search.result(timeout=1)
+            manager.maybe_computer_turn()
+            self.assertIsNone(manager.computer_move)  # Board still incomplete.
+            manager.on_board(occupancy(fen_board(game.fen())))
+            manager.maybe_computer_turn()
             self.assertEqual(manager.computer_move, "e7e5")
 
 

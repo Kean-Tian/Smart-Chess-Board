@@ -6,3 +6,5 @@
 - `validation/history/`: validation snapshots from before the reorganization. Their paths refer to the previous directory structure and should not be used as the current startup configuration.
 
 Routine Pi and ESP32 instructions are maintained in their respective README files to avoid duplicating documentation.
+
+- [Software specification alignment](Specification_Alignment.md): timing targets, resource defaults, diagnostics, and hardware verification boundaries.

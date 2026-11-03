@@ -136,7 +136,7 @@ class PlayModeTests(unittest.TestCase):
                     patch("play_stockfish.Game", return_value=game), \
                     patch("openrouter_engine.request.urlopen") as send, \
                     patch("builtins.input", side_effect=["e2e5", "e2e4", "quit"]):
-                self.assertEqual(play.main(["--opponent", "local", "--engine", str(binary), "--movetime", "50"]), 0)
+                self.assertEqual(play.main(["--opponent", "local", "--engine", str(binary), "--movetime", "2000"]), 0)
                 send.assert_not_called()
         self.assertEqual(len(game.move_history), 2)
         self.assertEqual(game.move_history[0], "e2e4")
@@ -144,7 +144,7 @@ class PlayModeTests(unittest.TestCase):
     def test_physical_ai_error_waits_for_retry_then_occupancy_confirmation(self):
         class Link:
             def __init__(self): self.commands = []
-            def request(self, command): self.commands.append(command)
+            def request(self, command, **kwargs): self.commands.append(command)
         with Game() as game:
             link = Link()
             opponent = OpenRouter("key", "model", attempts=1, report=lambda *_: None)

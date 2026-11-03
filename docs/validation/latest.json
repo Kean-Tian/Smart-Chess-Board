@@ -1,28 +1,83 @@
 {
-  "date": "2026-10-28",
+  "date": "2026-11-03",
   "layout": {
     "pi5": "Pi application, rules, engine, dependencies and tests",
     "esp32": "MCU firmware, portable board logic, tests and release images"
   },
   "host_ctest": {
-    "passed": 6,
-    "total": 6
+    "passed": 10,
+    "total": 10
   },
   "pi5_standalone_host_ctest": {
-    "passed": 5,
-    "total": 5
+    "passed": 6,
+    "total": 6,
+    "note": "Previous pre-C5 validation only; Pi-only copy not rebuilt for this migration."
   },
-  "mac_entry_real_engine": "passed in final Desktop/SCB layout",
-  "esp32_target_build": "passed, ESP-IDF 5.3.1 / espressif32@6.9.0",
-  "gpio_configuration": "byte-identical to pre-cleanup board_pins.h",
+  "mac_entry_real_engine": "passed: ten suites, C5-mapped portable core and real Stockfish/libchess integration",
+  "esp32_target_build": "passed: native ESP-IDF 5.5.3, RISC-V esp-14.2.0_20251107",
+  "static_internal_ram_bytes": 73440,
+  "static_control_ram_limit_bytes": 270336,
+  "nominal_full_board_hz": 100,
+  "simulated_full_board_hz": 100,
+  "debounce_matching_frames": 2,
+  "simulated_debounce_candidate_to_accept_us": 10000,
   "hardware_executed": false,
-  "removed_from_active_project": [
-    "duplicate legacy root source",
-    "Pi direct-GPIO hardware_main and shared-STEP motor driver",
-    "obsolete cloud-opponent prototype and test",
-    "unused Pi GPIO/SPI helper APIs",
-    "old build trees and caches",
-    "old SCB-backups and local KiCad preferences"
+  "hardware_scan_or_led_latency_measured": false,
+  "gpio_assignments": "C5 jumper-test map: 18 distinct exposed I/O + native USB GPIO13/14; GPIO0/1 excluded",
+  "engine_timing": {
+    "platform": "macOS arm64, not Pi hardware",
+    "threads": 1,
+    "hash_mb": 16,
+    "engine_trials": [
+      {
+        "target_ms": 2000,
+        "observed_ms": 2000.64,
+        "legal_move": "e2e4"
+      },
+      {
+        "target_ms": 3000,
+        "observed_ms": 3000.45,
+        "legal_move": "d2d4"
+      },
+      {
+        "target_ms": 5000,
+        "observed_ms": 4949.47,
+        "legal_move": "g1f3"
+      }
+    ]
+  },
+  "hardware_requirements_pending": [
+    "Pi execution and timing",
+    "actual scan rate and input stability",
+    "end-to-end LED/visual latency",
+    "whole-system power",
+    "ambient/enclosure thermal qualification",
+    "physical geometry and weight",
+    "battery runtime and charging",
+    "BOM and price targets"
   ],
-  "backup": "SCB_Before_Cleanup_20261028.zip (outside project)"
+  "specification_conflict": "264–520 KB search SRAM does not apply to Stockfish in Pi DRAM. The 264 KiB firmware static-RAM guard is a separate control-program budget.",
+  "pull_integration": {
+    "remote_commit": "31c0d249a423386fd5c8324db3e212275981720b",
+    "local_changes_preserved": true,
+    "menu_quit_smoke": "passed",
+    "local_game_smoke": "passed",
+    "normal_startup_checks_hidden": "passed"
+  },
+  "mcu_board": "DFRobot DFR1222 FireBeetle 2 ESP32-C5",
+  "mcu_module": "ESP32-C5-WROOM-1-N4",
+  "mcu_chip": "esp32c5",
+  "c5_migration": {
+    "single_core_tasks": true,
+    "rmt_dma": false,
+    "rmt_buffer_symbols": 96,
+    "flash_size": "4MB",
+    "bootloader_address": "0x2000",
+    "release_image_checksums": "passed",
+    "release_chip_headers": "ESP32-C5 (23)",
+    "flash_dry_run": "passed; no port opened",
+    "release_regressions": "passed: corrupted image, other-chip image, old bootloader address rejected",
+    "reset_requirements": "GPIO27 external 10k enable pull-up; GPIO28 BOOT held high at reset, open-drain Y_DIR afterward",
+    "validation_scope": "build and host simulation only; no board flashing or physical tests"
+  }
 }

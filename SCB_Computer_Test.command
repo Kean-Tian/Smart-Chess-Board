@@ -14,4 +14,9 @@ export SCB_RULES_LIBRARY="$task_root/tools/mac_test/binaries/libscb_rules.dylib"
 if [ "${1:-}" = --check-only ]; then
     exec /usr/bin/arch -arm64 /usr/bin/python3 tools/mac_test/check_software.py
 fi
+task_check_log="$task_root/tools/mac_test/latest_check.log"
+if ! /usr/bin/arch -arm64 /usr/bin/python3 tools/mac_test/check_software.py >"$task_check_log" 2>&1; then
+    cat "$task_check_log" >&2
+    exit 1
+fi
 exec /usr/bin/arch -arm64 /usr/bin/python3 pi5/app/play.py "$@"

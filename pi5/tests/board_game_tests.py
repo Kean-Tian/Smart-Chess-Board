@@ -30,7 +30,7 @@ class BoardTests(unittest.TestCase):
             def status(self): return ""
         class Link:
             commands = []
-            def request(self, cmd): self.commands.append(cmd)
+            def request(self, cmd, **kwargs): self.commands.append(cmd)
         g, link = Game(), Link()
         manager = PhysicalGame(g, link, lambda *_: None)
         manager.on_board(occupancy(fen_board(START)))
@@ -45,7 +45,7 @@ class BoardTests(unittest.TestCase):
             def fen(self): return START
             def legal_moves(self): return ["e2e4"]
         class Link:
-            def request(self, cmd): pass
+            def request(self, cmd, **kwargs): pass
         manager = PhysicalGame(Game(), Link(), lambda *_: None)
         manager.on_board(occupancy(fen_board(START)))
         manager.try_move("e2e5")

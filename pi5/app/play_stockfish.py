@@ -50,8 +50,13 @@ def play_game(game, engine, computer, movetime_ms):
 def run(args):
     computer = args.computer[0]
     with create_opponent(args) as engine, Game() as game:
-        print(f"Opponent: {engine.name}. Computer plays {args.computer}.")
-        print("Enter UCI moves (e2e4, e7e8q) or quit.")
+        if args.opponent == "local":
+            print("接下来可以输入 e2e4 测试人机对弈，输入 quit 退出。")
+            print(f"Local opponent: {engine.name}. Computer plays {args.computer}.")
+            print("Enter UCI moves (e2e4, e7e8q) or quit. No network or ESP32 is required.")
+        else:
+            print(f"Opponent: {engine.name}. Computer plays {args.computer}.")
+            print("Enter UCI moves (e2e4, e7e8q) or quit.")
         return play_game(game, engine, computer, args.movetime)
 
 

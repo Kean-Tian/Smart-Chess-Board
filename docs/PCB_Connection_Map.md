@@ -1,78 +1,72 @@
-# PCB 接线与固件配置
+# FireBeetle 2 ESP32-C5 Bench Connections
 
-依据：用户提供的 `master pcb.pdf` 与 `sensor pcb.pdf`，2026-10-26 版本。这里记录的是原理图可见网络，没有把 PDF 当作已测量的实物连接。
+Current firmware target: **DFRobot DFR1222 V1.0, ESP32-C5-WROOM-1-N4**, 4 MB Flash, no PSRAM. The following is a proposed jumper-wire test harness based on the manufacturer schematic and module datasheet. It is not the copper routing of the team's earlier bare-chip Master PCB. Firmware and pin assignments have not been verified on connected hardware.
 
-## ESP32-S3 GPIO
+## Signal Mapping
 
-GPIO 数字不能当成裸芯片封装脚号。
+All numbers below are native GPIO numbers, not Arduino D numbers or module-pad numbers. The sensor PCB uses the original network names. Connect by net name, not by the numeric order of ribbon contacts.
 
-| 功能 | 网络 | GPIO | 封装脚号 |
-|---|---|---:|---:|
-| LED 数据，先经 74AHCT1G125 | LED_IN_3V3 | 2 | 7 |
-| 行地址 A0 | MUX_IN1 | 4 | 9 |
-| 行地址 A1 | MUX_IN2 | 5 | 10 |
-| 行地址 A2 | MUX_IN3 | 6 | 11 |
-| 第 1 列 | DIG_OUT1 | 7 | 12 |
-| 第 2 列 | DIG_OUT2 | 8 | 13 |
-| 第 3 列 | DIG_OUT3 | 9 | 14 |
-| 第 4 列 | DIG_OUT4 | 10 | 15 |
-| 第 5 列 | DIG_OUT5 | 11 | 16 |
-| 第 6 列 | DIG_OUT6 | 12 | 17 |
-| 第 7 列 | DIG_OUT7 | 13 | 18 |
-| 第 8 列 | DIG_OUT8 | 14 | 19 |
-| USB D- | USB_DN | 19 | 25 |
-| USB D+ | USB_DP | 20 | 26 |
-| 电磁铁 MOSFET | EM_CTRL | 33 | 38 |
-| X 步进脉冲 | X_STEP | 34 | 39 |
-| X 方向 | X_DIR | 35 | 40 |
-| Y 步进脉冲 | Y_STEP | 36 | 41 |
-| Y 方向 | Y_DIR | 37 | 42 |
-| 两个 A4988 的公共使能 | MOTOR_EN | 38 | 43 |
+| Function / existing PCB net | FireBeetle GPIO | Board label | Notes |
+|---|---:|---|---|
+| LED_IN_3V3, input to external 74AHCT1G125 | 2 | 2 / A1 | External RGB-chain data; not onboard indicator |
+| MUX_IN1 / A0 | 3 | 3 / A2 | Least significant row address bit |
+| MUX_IN2 / A1 | 4 | 4 / A3 | Row address |
+| MUX_IN3 / A2 | 5 | 5 / A4 | Most significant row address bit |
+| DIG_OUT1 / file a | 6 | 6 / D12 | 3.3 V digital input |
+| DIG_OUT2 / file b | 7 | 7 / D11 | JTAG strap; do not change eFuses |
+| DIG_OUT3 / file c | 8 | 8 / D2 | Digital input |
+| DIG_OUT4 / file d | 9 | 9 / SDA | Digital input; no I2C driver used |
+| DIG_OUT5 / file e | 10 | 10 / SCL | Digital input; no I2C driver used |
+| DIG_OUT6 / file f | 23 | 23 / SCK | Digital input; no SPI driver used |
+| DIG_OUT7 / file g | 24 | 24 / MOSI | Digital input |
+| DIG_OUT8 / file h | 25 | 25 / MISO | SDIO edge strap, not SPI boot mode selection |
+| EM_CTRL to external MOSFET driver | 15 | 15 / D13 | Also drives the onboard LED; N4/no-PSRAM module only |
+| X_STEP to A4988 | 12 | RX | Pulse output, not UART RX in this firmware |
+| X_DIR to A4988 | 11 | TX | ROM may print here before application startup; keep EN disabled |
+| Y_STEP to A4988 | 26 | 26 / D3 | Boot strap; high-impedance driver input at reset |
+| Y_DIR to A4988 | 28 | 28 / D9 / BOOT | Open-drain; board's pull-up supplies HIGH |
+| MOTOR_EN, shared active-low A4988 enable | 27 | 27 / D6 | Add 10k pull-up to the same 3.3 V logic rail |
+| USB D- / D+ | 13 / 14 | Onboard USB-C | Already routed on board; no external signal wiring |
 
-`MOTOR_EN=1` 禁用驱动，`MOTOR_EN=0` 使能。`EM_CTRL=1` 吸合，`0` 释放。
-两轴 **独立 STEP、共用 ENABLE**。旧 Pi 版本的共享 STEP 算法不适用于本板，固件未使用旧 `motor_axis.c`。
+The application uses all 18 exposed I/O signals plus the two onboard USB signals. GPIO0 controls 3V3_C and GPIO1 senses the battery; neither is used or reconfigured. Leave the GDI display connector unused because its nets share the pins above. The project TFT remains connected to the Pi through HDMI and USB touch.
 
-## 排线 Master J4 / Sensor J1（逐脚一致）
+## Reset, BOOT, and Logic Levels
 
-| 排线脚 | 网络 | MCU GPIO |
+- GPIO27 and GPIO28 must be HIGH at reset for normal flash boot. Do not attach a circuit that pulls them LOW during reset. Add an external 10k pull-up on MOTOR_EN/GPIO27 so the motor drivers remain disabled before software starts. Firmware cannot replace this reset-time resistor.
+- GPIO28 is shared with the BOOT button. The firmware uses open-drain output plus pull-up, so the button does not short a push-pull HIGH output. Never press BOOT during motion: it can force the Y direction LOW. When a requested HIGH reads LOW, the output adapter reports failure before sending the next pulse. This is not an independent position or safety sensor.
+- To enter USB download mode, hold BOOT, tap RST, then release BOOT. Keep MOTOR_EN/GPIO27 HIGH during download. After flashing, release BOOT and reset for normal operation.
+- GPIO26 and GPIO27/28 are used as outputs after their boot values are latched. GPIO25 and GPIO3 are SDIO timing straps; the application does not use SDIO. GPIO7 can affect JTAG selection; no eFuse changes are required.
+- GPIO15 is usable on the N4 module without in-package PSRAM, per the module datasheet. Do not use this map with an N4R2/N8R8 PSRAM module. The onboard D13 LED follows EM_CTRL; it does not prove magnet current or successful pickup.
+- All external logic inputs must stay in the 3.3 V domain. Connect common ground. Keep the 74AHCT1G125/appropriate LED level conversion and the motor/MOSFET driver circuits; do not connect motor coils or the electromagnet directly to GPIO.
+- Use the fixed **3V3** supply, not the default-OFF **3V3_C**, for sensor logic. Do not power motors or the magnet from the FireBeetle's 3.3 V rail. Connect the existing sensor PCB logic/pull-ups to 3.3 V as documented. Verify external supplies before connecting USB; do not tie conflicting regulator outputs together.
+- The C5 is a wired replacement controller for a test harness. Do not drive the same signal simultaneously from a populated original MCU and the C5. Isolate the original controller's signal outputs first.
+
+## Sensor Ribbon Contacts
+
+| Original Master J4 / Sensor J1 contact | Net | C5 GPIO |
 |---:|---|---:|
-| 1 | DIG_OUT3 | 9 |
-| 2 | DIG_OUT7 | 13 |
-| 3 | DIG_OUT4 | 10 |
-| 4 | DIG_OUT8 | 14 |
-| 5 | DIG_OUT6 | 12 |
-| 6 | DIG_OUT2 | 8 |
-| 7 | DIG_OUT5 | 11 |
-| 8 | DIG_OUT1 | 7 |
-| 9 | LED_IN（电平转换后） | 2，经缓冲 |
-| 10 | GND | — |
-| 11 | MUX_IN1 | 4 |
-| 12 | GND | — |
-| 13 | MUX_IN2 | 5 |
-| 14 | +3V3 | — |
-| 15 | MUX_IN3 | 6 |
-| 16 | +5V | — |
+| 1 | DIG_OUT3 | 8 |
+| 2 | DIG_OUT7 | 24 |
+| 3 | DIG_OUT4 | 9 |
+| 4 | DIG_OUT8 | 25 |
+| 5 | DIG_OUT6 | 23 |
+| 6 | DIG_OUT2 | 7 |
+| 7 | DIG_OUT5 | 10 |
+| 8 | DIG_OUT1 | 6 |
+| 9 | LED_IN after external level conversion | 2 through buffer |
+| 10 | GND | GND |
+| 11 | MUX_IN1 | 3 |
+| 12 | GND | GND |
+| 13 | MUX_IN2 | 4 |
+| 14 | +3V3 | Verified 3.3 V logic supply |
+| 15 | MUX_IN3 | 5 |
+| 16 | +5V | Verified external LED/buffer supply |
 
-特别注意：排线的 DIG_OUT 顺序不是 1、2、3……；固件按网络名映射。
+Sensor logic remains active-low (LOW = occupied). LM339 outputs are digital inputs, not ADC readings. Confirm a1/h1/a8/h8 and use POLARITY HIGH only if physical measurements require it. LEDs default to LED0=a1 with serpentine rows; row/column flips remain configurable in main/board_pins.h.
 
-## 传感与 LED
+## Sources
 
-- LM339 是比较器，固件读取八路数字高低电平，不读取 ADC 数值；1.5 V 阈值由硬件产生。
-- 本次传感板的比较器输出上拉到 +3V3，不能沿用旧文档中的 +5V 上拉结论。
-- 默认 `LOW=occupied`；先用一颗棋子验证，必要时执行 `POLARITY HIGH`。
-- 默认 Y0 为 rank 1、DIG_OUT1 为 file a。实际朝向不能单凭 PDF 确定，先核对四角。
-- LED 默认 LED0=a1、蛇形接线。方向不同可修改 `board_pins.h` 的独立传感／LED 翻转参数。
-- 传感扫描是逐行采样，连续三帧相同才报告稳定状态；未测量实物扫描率。
-- RMT 使用 10 MHz 分辨率，GRB、MSB first，0=300/900 ns，1=900/300 ns，帧尾低电平 300 us。需要在实际 WS2812B 器件上核对波形和颜色。
-
-## 裸芯片与存储器
-
-本图为 ESP32-S3 裸芯片加外部 W25Q128（16 MB）Flash。固件使用 DIO、禁用 PSRAM。
-GPIO33–37 已用于电磁铁和电机，因此不能换成占用这些引脚的 octal Flash/PSRAM 配置，不能直接照搬带 octal PSRAM 的开发板配置。
-这项约束依据 [Espressif GPIO 文档](https://docs.espressif.com/projects/esp-idf/en/v5.3.3/esp32s3/api-reference/peripherals/gpio.html)。
-
-## 图纸未提供的运动输入
-
-图中未见归零开关、限位或位置反馈接到 MCU。`HOME` 因此返回 `NO_HOME_SWITCHES`。
-`ORIGIN` 只记录操作员人工对准的位置，不会驱动机构归零。`DONE` 只表示指令脉冲完成，不能证明棋子到位。
-X/Y 正方向、每格步数、电磁铁耦合、行驱动能力与完整机构运动均待实物验证。
+- [DFRobot DFR1222 board overview and pinout](https://wiki.dfrobot.com/dfr1222/)
+- [DFRobot V1.0 schematic](https://dfimg.dfrobot.com/wiki/20190/DFR1222_firebeetle-2-esp32-c5_schematics_V1.0.pdf)
+- [ESP32-C5-WROOM-1/1U datasheet, pin table notes and boot configuration](https://documentation.espressif.com/esp32-c5-wroom-1_wroom-1u_datasheet_en.html)
+- [ESP-IDF 5.5.3 C5 SoC capabilities](https://github.com/espressif/esp-idf/blob/v5.5.3/components/soc/esp32c5/include/soc/soc_caps.h)
