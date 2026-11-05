@@ -14,14 +14,23 @@
 #include "freertos/task.h"
 #include <string.h>
 
-#if !CONFIG_IDF_TARGET_ESP32
-#error "This firmware targets the classic ESP32 in WeMos LOLIN32 (ESP-WROOM-32)."
+#if !CONFIG_IDF_TARGET_ESP32S2
+#error "This firmware targets ESP32-S2-Saola-1 (esp32s2)."
 #endif
-#if defined(CONFIG_SPIRAM)
-#error "LOLIN32 WROOM has no PSRAM; GPIO16/17 are assigned as sensor row outputs."
-#endif
-_Static_assert(SOC_CPU_CORES_NUM == 2, "LOLIN32 WROOM task layout expects two CPU cores");
-_Static_assert(SCB_PIN_UART_TX == 1 && SCB_PIN_UART_RX == 3, "Keep onboard USB-UART pins reserved");
+_Static_assert(SOC_CPU_CORES_NUM == 1, "ESP32-S2 uses one CPU core");
+_Static_assert(SCB_PIN_UART_TX == 43 && SCB_PIN_UART_RX == 44, "Keep Saola USB-UART pins reserved");
+#define SCB_CHECK_OUTPUT(pin) _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S2 output GPIO: " #pin)
+SCB_CHECK_OUTPUT(SCB_PIN_LED);
+SCB_CHECK_OUTPUT(SCB_PIN_ROW_A0);
+SCB_CHECK_OUTPUT(SCB_PIN_ROW_A1);
+SCB_CHECK_OUTPUT(SCB_PIN_ROW_A2);
+SCB_CHECK_OUTPUT(SCB_PIN_MAGNET);
+SCB_CHECK_OUTPUT(SCB_PIN_MOTOR_EN);
+SCB_CHECK_OUTPUT(SCB_PIN_X_STEP);
+SCB_CHECK_OUTPUT(SCB_PIN_X_DIR);
+SCB_CHECK_OUTPUT(SCB_PIN_Y_STEP);
+SCB_CHECK_OUTPUT(SCB_PIN_Y_DIR);
+#undef SCB_CHECK_OUTPUT
 
 static ScbCore core;
 static QueueHandle_t tx_queue;
@@ -143,9 +152,20 @@ static void configure_gpio(void) {
     const unsigned inputs[] = SCB_COLUMN_PINS;
     for (unsigned i = 0; i < 8; ++i) input_mask |= UINT64_C(1) << inputs[i];
     const gpio_config_t out_config = {.pin_bit_mask = output_mask, .mode = GPIO_MODE_OUTPUT};
-    const gpio_config_t in_config = {.pin_bit_mask = input_mask, .mode = GPIO_MODE_INPUT};
+    configASSERT((input_mask & output_mask) == 0);
+    configASSERT((input_mask & ((1ULL << SCB_PIN_LED) |
+        (1ULL << SCB_PIN_UART_TX) | (1ULL << SCB_PIN_UART_RX))) == 0);
+    const gpio_config_t in_config = {
+        .pin_bit_mask = input_mask,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
     ESP_ERROR_CHECK(gpio_config(&out_config));
-    /* The sensor PCB already has 3.3 V LM339 pull-ups. */
+    /* GPIO1-8 only observe the sensor PCB's externally pulled-up outputs.
+     * HIGH is a measured input, not a request for this MCU to drive HIGH.
+     */
     ESP_ERROR_CHECK(gpio_config(&in_config));
 }
 static void control_task(void *unused) {
@@ -183,7 +203,7 @@ void app_main(void) {
     tx_queue = xQueueCreate(32, SCB_LINE_CAPACITY);
     led_queue = xQueueCreate(1, sizeof(LedFrame));
     configASSERT(tx_queue && led_queue);
-    configASSERT(xTaskCreatePinnedToCore(serial_writer, "scb_serial_tx", 3072, NULL, 4, NULL, 0) == pdPASS);
+    configASSERT(xTaskCreate(serial_writer, "scb_serial_tx", 3072, NULL, 4, NULL) == pdPASS);
     const rmt_tx_channel_config_t rmt = {.gpio_num = SCB_PIN_LED,
         .clk_src = RMT_CLK_SRC_DEFAULT, .resolution_hz = 10000000,
         .mem_block_symbols = 2 * SOC_RMT_MEM_WORDS_PER_CHANNEL,
@@ -192,12 +212,13 @@ void app_main(void) {
     const rmt_copy_encoder_config_t encoder = {};
     ESP_ERROR_CHECK(rmt_new_copy_encoder(&encoder, &led_encoder));
     ESP_ERROR_CHECK(rmt_enable(led_channel));
-    configASSERT(xTaskCreatePinnedToCore(led_writer, "scb_led", 3072, NULL, 3, NULL, 0) == pdPASS);
+    configASSERT(xTaskCreate(led_writer, "scb_led", 3072, NULL, 3, NULL) == pdPASS);
     ScbIo io = {.write = write_pin, .read = read_pin, .pulse = pulse_pin,
         .show_leds = show_leds, .emit = emit_frame, .stats = read_stats};
     if (!scb_core_init(&core, io, esp_timer_get_time())) {
         scb_core_fault(&core, "INIT");
         for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    configASSERT(xTaskCreatePinnedToCore(control_task, "scb_control", 8192, NULL, 10, NULL, 1) == pdPASS);
+    /* One S2 CPU: priority 10 control preempts the blocking serial/LED workers. */
+    configASSERT(xTaskCreate(control_task, "scb_control", 8192, NULL, 10, NULL) == pdPASS);
 }

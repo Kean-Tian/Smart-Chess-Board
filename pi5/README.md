@@ -122,7 +122,7 @@ The shared library is placed in `build/lib/`, and the console in `build/bin/`. T
 Set `STOCKFISH_EXECUTABLE` to select a Stockfish executable for another platform. The Pi defaults to the bundled Linux ARM64 version; the entry point for the current Mac is in the project root.
 
 The Pi maintains the chess rules and logical board state. Both Stockfish and OpenRouter results must pass rules validation. After an illegal move, the physical board must be restored. Use `commit <uci>` to resolve promotions or ambiguous multi-square changes; matching occupancy is still required.
-This directory does not access Pi GPIO. All hardware operations are sent through the ESP32 USB protocol.
+This directory does not access Pi GPIO. All hardware operations are sent through the ESP32-S2-Saola-1 USB-UART protocol. The current connection uses MCU UART0 GPIO43/44 at 115200 baud; it does not require Pi GPIO wiring.
 
 Official references: [Stockfish 19](https://github.com/official-stockfish/Stockfish/releases/tag/sf_19), [UCI](https://official-stockfish.github.io/docs/stockfish-wiki/UCI-Protocol-and-Stockfish-Commands.html).
 
@@ -131,3 +131,11 @@ Official references: [Stockfish 19](https://github.com/official-stockfish/Stockf
 Game search defaults to 3000 ms, one engine thread, and a 16 MiB Hash table in Pi memory. Board mode searches in a background worker and continues processing sensor events. Search results are revalidated against the current position before showing a move. LED commands use an 80 ms ACK timeout; this is not a measured end-to-end display latency.
 
 Run `python3 app/board_diagnostics.py --help` for target timing measurements over USB. Diagnostic engine searches may explicitly use shorter times than the game interface. See [Specification alignment](../docs/Specification_Alignment.md) for hardware validation limits.
+
+## ESP32-S2 Sensor Bench Tests
+
+From the project root, use `esp32/.venv/bin/python pi5/app/scb_link.py --port PORT` for live sensor diagnostics. On a configured Pi, run `.venv/bin/python app/scb_link.py --port /dev/ttyUSB0` from this directory. Replace PORT with the detected device. The terminal shows MUX selection, DIG_OUT1..8 levels and readable occupied squares without waiting for Enter. These are logical coordinates; physical orientation still needs calibration.
+
+For scan-only timing, run `.venv/bin/python app/board_diagnostics.py --port /dev/ttyUSB0 --seconds 10 --output runtime/S2_Scan_Timing.json`. LED verification is omitted and reported as null unless `--exercise-leds` is explicitly provided. This mode does not ARM or move motors. Only one process may own the serial port at a time.
+
+See the [S2 test guide](../docs/ESP32_S2_Test_Guide.md), [connection map](../docs/PCB_Connection_Map.md) and [current validation record](../docs/validation/latest.json). Computer tests and target compilation do not establish that this application has run on a Pi 5.

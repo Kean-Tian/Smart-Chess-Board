@@ -4,12 +4,14 @@
   "official_mac_download": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-macos-universal.tar.gz",
   "official_archive_sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77",
   "sha256": {
-    "esp32_core_tests": "2333576ad388ed62cae012e0f4ee469801bad657c9ad3bfbe938ddc4cc5e0916",
+    "esp32_core_tests": "bb5fa360a232774ac0ae08eed3472af907f70490805cdd9aabb44a692b6d3f1a",
     "libchess_adapter_tests": "afce492064da5c08f4a8752409fcec1ce4a62dc2bce54f92b6e52532c29abc7f",
     "libscb_rules.dylib": "35af550ac52010279124565b9c4abe3dd42a463ceed42267a1d249934c4351d8",
     "stockfish-macos-universal": "8eed61129d1493c5d1f2fd9323f0c54c47ac49319911fbde18c6b9c87e8b13c5"
   },
-  "updated": "2026-11-03",
+  "updated": "2026-11-05",
   "test_suites": 10,
-  "mcu_test_target": "WeMos LOLIN32 classic ESP32"
+  "mcu_test_target": "ESP32-S2-Saola-1",
+  "mcu_gpio_backend": "simulated",
+  "hardware_tested_by_mac_launcher": false
 }

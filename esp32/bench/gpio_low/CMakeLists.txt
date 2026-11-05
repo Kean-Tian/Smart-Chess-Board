@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+set(IDF_TARGET "esp32s2" CACHE STRING "ESP32-S2-Saola-1")
+set(COMPONENTS main)
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(scb_s2_mux_low_test)
+if(NOT IDF_TARGET STREQUAL "esp32s2")
+    message(FATAL_ERROR "The MUX bench firmware requires ESP32-S2-Saola-1")
+endif()

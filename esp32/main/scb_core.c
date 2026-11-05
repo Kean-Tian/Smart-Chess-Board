@@ -57,7 +57,7 @@ static bool set_row(ScbCore *c, unsigned row) {
 
 bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     if (!c || !io.write || !io.read || !io.pulse || !io.show_leds || !io.emit) return false;
-    memset(c, 0, sizeof(*c)); c->io = io; c->active_low = true;
+    memset(c, 0, sizeof(*c)); c->io = io; c->active_low = SCB_SENSOR_ACTIVE_LOW != 0;
     /* Must be the first outputs written: motor disable and magnet OFF. */
     if (!io.write(io.ctx, SCB_PIN_MOTOR_EN, true) ||
         !io.write(io.ctx, SCB_PIN_MAGNET, false) ||
@@ -72,25 +72,57 @@ bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     c->row_ready_at = now + SCB_SCAN_SETTLE_US;
     c->frame_started_at = now;
     if (!io.show_leds(io.ctx, &c->leds)) return false;
-    emit(c, "HELLO SCB_LOLIN32 1");
+    emit(c, "HELLO SCB_S2_SAOLA_1 1");
     return true;
 }
 
-static void board_report(ScbCore *c, bool raw) {
+static uint64_t occupancy_bits(const bool map[64]) {
     uint64_t bits = 0;
-    const bool *map = raw ? c->raw_frame : c->stable;
     for (unsigned i = 0; i < 64; ++i) if (map[i]) bits |= UINT64_C(1) << i;
+    return bits;
+}
+
+static void board_report(ScbCore *c, bool raw) {
+    uint64_t bits = occupancy_bits(raw ? c->raw_frame : c->stable);
     emit(c, "%s %016llX", raw ? "RAW" : "BOARD", (unsigned long long)bits);
+    if (!raw) c->sensor_trace_pending = bits != 0;
+}
+
+static void sensor_trace(ScbCore *c, int64_t now, bool force) {
+    if (!c->board_ready || !c->sensor_trace_pending) return;
+    if (!force && c->sensor_trace_at &&
+        now - c->sensor_trace_at < SCB_SENSOR_TRACE_INTERVAL_US) return;
+    uint64_t bits = occupancy_bits(c->stable);
+    for (unsigned row = 0; row < 8; ++row) {
+        unsigned rank = SCB_SENSOR_REVERSE_ROWS ? 7U - row : row;
+        if (!((bits >> (rank * 8U)) & 0xffU)) continue;
+        char inputs[9];
+        for (unsigned col = 0; col < 8; ++col)
+            inputs[col] = (c->stable_inputs[row] & (1U << col)) ? '1' : '0';
+        inputs[8] = '\0';
+        /* These inputs were captured for this MUX address in the same accepted
+           frame as occupy, not re-read after the scanner changed address. */
+        emit(c, "SENSOR frame=%u mux=%u%u%u A0=%u:%u A1=%u:%u A2=%u:%u inputs=%s occupy=%016llX polarity=%s",
+             c->stable_frame, (row >> 2) & 1U, (row >> 1) & 1U, row & 1U,
+             address[0], row & 1U, address[1], (row >> 1) & 1U,
+             address[2], (row >> 2) & 1U, inputs, (unsigned long long)bits,
+             c->active_low ? "LOW" : "HIGH");
+    }
+    c->sensor_trace_pending = false;
+    c->sensor_trace_at = now;
 }
 
 static void scan_tick(ScbCore *c, int64_t now) {
     if (now < c->row_ready_at) return;
+    uint8_t inputs = 0;
     for (unsigned col = 0; col < 8; ++col) {
         bool high = c->io.read(c->io.ctx, columns[col]);
+        if (high) inputs |= (uint8_t)(1U << col);
         unsigned rank = SCB_SENSOR_REVERSE_ROWS ? 7U - c->row : c->row;
         unsigned file = SCB_SENSOR_REVERSE_COLUMNS ? 7U - col : col;
         c->sampled[rank * 8U + file] = c->active_low ? !high : high;
     }
+    c->sampled_inputs[c->row] = inputs;
     if (++c->row == 8) {
         c->row = 0;
         if (c->scan_frames) {
@@ -108,6 +140,8 @@ static void scan_tick(ScbCore *c, int64_t now) {
         if (scb_debouncer_update(&c->debounce, c->sampled, c->stable) > 0) {
             c->debounce_us = (unsigned)(now - c->debounce_started_at);
             c->board_ready = true;
+            memcpy(c->stable_inputs, c->sampled_inputs, sizeof(c->stable_inputs));
+            c->stable_frame = c->scan_frames;
             board_report(c, false);
             /* During commanded robot travel, occupancy is telemetry, not a human move. */
             if (!c->moving && !c->ignore_frames) {
@@ -124,6 +158,7 @@ static void scan_tick(ScbCore *c, int64_t now) {
                 scb_move_tracker_process(&c->tracker, c->stable, &ev);
             }
         }
+        sensor_trace(c, now, false);
     }
     if (!set_row(c, c->row)) { scb_core_fault(c, "GPIO"); return; }
     if (c->row == 0) {
@@ -189,8 +224,18 @@ static void command(ScbCore *c, char *line, int64_t now) {
         reply(c, "ACK", id, cmd); return;
     }
     if (!strcmp(cmd, "STATUS") && n == 1) {
-        emit(c, "STATUS %u armed=%u moving=%u magnet=%u origin=%u steps=%u", id,
-             c->armed, c->moving, c->magnet, c->origin_valid, c->steps_per_tile);
+        emit(c, "STATUS %u armed=%u moving=%u magnet=%u origin=%u steps=%u polarity=%s", id,
+             c->armed, c->moving, c->magnet, c->origin_valid, c->steps_per_tile,
+             c->active_low ? "LOW" : "HIGH");
+        return;
+    }
+    if (!strcmp(cmd, "INPUTS") && n == 1) {
+        char levels[9];
+        for (unsigned col = 0; col < 8; ++col)
+            levels[col] = c->io.read(c->io.ctx, columns[col]) ? '1' : '0';
+        levels[8] = '\0';
+        /* Instantaneous pin levels in DIG_OUT1..8 order, not a board scan. */
+        emit(c, "STATUS %u inputs=%s", id, levels);
         return;
     }
     if (!strcmp(cmd, "TIMING") && n == 1) {
@@ -209,7 +254,10 @@ static void command(ScbCore *c, char *line, int64_t now) {
     }
     if ((!strcmp(cmd, "SCAN") || !strcmp(cmd, "RAW")) && n == 1) {
         if (!c->board_ready) { reply(c, "ERR", id, "NOT_READY"); return; }
-        board_report(c, !strcmp(cmd, "RAW")); reply(c, "ACK", id, cmd); return;
+        bool raw = !strcmp(cmd, "RAW");
+        board_report(c, raw);
+        if (!raw) sensor_trace(c, now, true);
+        reply(c, "ACK", id, cmd); return;
     }
     if (!strcmp(cmd, "ARM") && n == 1) {
         if (now - c->last_ping >= SCB_LINK_TIMEOUT_US || c->last_ping == 0) {
@@ -234,6 +282,7 @@ static void command(ScbCore *c, char *line, int64_t now) {
         c->active_low = !strcmp(args[1], "LOW");
         scb_debouncer_initialize(&c->debounce, SCB_DEBOUNCE_SCANS);
         scb_move_tracker_initialize(&c->tracker); c->board_ready = false; c->row = 0;
+        c->sensor_trace_pending = false; c->sensor_trace_at = 0;
         if (!set_row(c, 0)) { scb_core_fault(c, "GPIO"); return; }
         c->row_ready_at = now + SCB_SCAN_SETTLE_US;
         c->frame_started_at = now;

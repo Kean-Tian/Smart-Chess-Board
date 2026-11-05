@@ -1,6 +1,6 @@
 # Smart Chess Board
 
-Team 24. The LOLIN32 ESP32 controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
+Team 24. The ESP32-S2-Saola-1 controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
 
 ## Git LFS Setup
 
@@ -16,12 +16,13 @@ git lfs pull
 | Task | Start here |
 |---|---|
 | Modify Pi 5 features or choose a chess opponent | [pi5/](pi5/README.md) |
-| Modify LOLIN32 ESP32 firmware or GPIO settings, or flash the firmware | [esp32/](esp32/README.md) |
+| Modify ESP32-S2 firmware or GPIO settings, or flash the firmware | [esp32/](esp32/README.md) |
 | Play on the current Mac | Double-click `SCB_Computer_Test.command` |
 | Validate the software on the current Mac | `sh SCB_Computer_Test.command --check-only` |
 | View PCB schematics and the KiCad project | [hardware/](hardware/README.md) |
 | Check GPIO and ribbon-cable mappings | [Connection map](docs/PCB_Connection_Map.md) |
 | Check Pi–MCU commands and messages | [USB protocol](docs/USB_Protocol.md) |
+| Test the S2 USB connection, sensors and optional outputs | [S2 test guide](docs/ESP32_S2_Test_Guide.md) |
 
 ## Directory Structure
 
@@ -35,7 +36,7 @@ SCB/
 │   ├── tests/
 │   ├── setup.sh               Initial setup on the Pi
 │   └── start.sh               Startup on the Pi
-├── esp32/                     Standalone ESP-IDF firmware project for WeMos LOLIN32
+├── esp32/                     Standalone ESP-IDF firmware project for ESP32-S2-Saola-1
 │   ├── main/                  GPIO configuration, control logic, and platform drivers
 │   ├── components/board_logic/  Debouncing, move events, and LED square mapping
 │   ├── tests/                 Control-logic tests without hardware
@@ -108,7 +109,9 @@ This entry point builds only the Pi rules library and host tests. Cross-compile 
 
 ## Current Validation Scope and Limitations
 
-Software tests and firmware builds have been performed. The Pi 5, physical USB link, GPIO, motors, and sensors have not been connected to this Mac for hardware validation.
+The current S2 firmware has compiled and its portable logic and Python interfaces have host tests. Earlier S2 hardware checks verified computer-to-MCU USB commands and advancing complete scan frames; the user also observed physical magnet responses. The latest packaged image is not automatically certified by those earlier checks. Pi 5 execution, complete 64-square accuracy, sustained timing and physical LED/motor/magnet behavior remain unverified.
+
+Current sensor wiring is MUX A0/A1/A2 on GPIO36/37/38 and DIG_OUT1..8 on GPIO1..8, with HIGH meaning occupied. UART0 GPIO43/44 is reserved for the onboard USB-UART bridge. Physical coordinate orientation remains uncalibrated: the physical lower-left sensor displayed logical h1. See the test guide before gameplay.
 Stockfish games do not require a network connection or an API key. OpenRouter games require an Internet connection and API credentials; automated cloud tests use simulated responses. Motion support remains at the bench-control stage, without automatic homing, obstacle avoidance, or complete capture-piece handling.
 
 Third-party source code and licenses are kept under `engines/` and `vendor/` in the Pi directory for offline operation and rebuilding.

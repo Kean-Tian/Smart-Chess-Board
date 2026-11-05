@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import queue
 import secrets
+import select
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -29,9 +31,41 @@ def parse_frame(line: str) -> Frame:
             raise ValueError("Malformed occupancy frame")
         int(parts[1], 16)
         return Frame(kind, None, parts[1])
-    if kind in {"EVENT", "FAULT", "HELLO"}:
+    if kind in {"EVENT", "FAULT", "HELLO", "SENSOR"}:
         return Frame(kind, None, line.strip()[len(kind):].strip())
     raise ValueError("Unknown frame")
+
+
+def format_occupancy(payload: str) -> str:
+    if len(payload) != 16 or any(ch not in "0123456789abcdefABCDEF" for ch in payload):
+        raise ValueError("Invalid occupancy mask")
+    mask = int(payload, 16)
+    if mask == 0:
+        return "无棋子"
+    if mask == (1 << 64) - 1:
+        return "全部64格"
+    return ", ".join(f"{chr(ord('a') + square % 8)}{square // 8 + 1}"
+                     for square in range(64) if mask & (1 << square))
+
+
+def format_frame(frame: Frame) -> str:
+    if frame.kind in {"BOARD", "RAW"}:
+        try:
+            return f"{frame.kind} | OCCUPY={format_occupancy(frame.payload)}"
+        except ValueError:
+            return str(frame)
+    if frame.kind == "SENSOR":
+        try:
+            fields = dict(token.split("=", 1) for token in frame.payload.split())
+            pins = [fields[name].split(":", 1) for name in ("A0", "A1", "A2")]
+            gpio = ",".join(pin for pin, _ in pins)
+            levels = "".join(level for _, level in pins)
+            return (f"MUX(A2,A1,A0)={fields['mux']} [GPIO{gpio}={levels}] | "
+                    f"INPUTS(DIG_OUT1..8)={fields['inputs']} | "
+                    f"OCCUPY={format_occupancy(fields['occupy'])} | frame={fields['frame']}")
+        except (ValueError, KeyError):
+            pass
+    return str(frame)
 
 
 class DeviceError(RuntimeError):
@@ -68,7 +102,7 @@ class ScbLink:
     @classmethod
     def open(cls, port="/dev/ttyUSB0"):
         import serial  # pyserial is required only for a real connection.
-        # CP2104 DTR/RTS are wired to EN/GPIO0. Set inactive states before
+        # Saola USB-UART DTR/RTS control EN/GPIO0. Set inactive states before
         # opening; allow any driver-generated reset transient to settle.
         device = serial.Serial(baudrate=115200, timeout=0.1, write_timeout=1)
         device.dtr = False
@@ -219,20 +253,36 @@ if __name__ == "__main__":
     parser.add_argument("--port", default="/dev/ttyUSB0")
     args = parser.parse_args()
     with ScbLink.open(args.port) as link:
-        print("Connected. Outputs start DISARMED. Enter STATUS, SCAN, LED a1 20 0 0, or quit.")
+        print("Connected. Outputs start DISARMED. Enter STATUS, SCAN, INPUTS, or quit.")
+        print("Board and occupied-row sensor updates appear automatically.")
+        try:
+            print(format_frame(link.request("SCAN")))
+        except (DeviceError, TimeoutError) as exc:
+            print(exc)
+        print("SCB > ", end="", flush=True)
         while True:
             try:
-                command = input("SCB > ").strip()
+                # Keep draining sensor events while waiting for a command,
+                # instead of hiding placement/lift updates until Enter is pressed.
+                if not link.events.empty():
+                    print()
+                    while not link.events.empty():
+                        print(format_frame(link.events.get_nowait()), flush=True)
+                    print("SCB > ", end="", flush=True)
+                if not select.select([sys.stdin], [], [], 0.05)[0]:
+                    continue
+                command = input().strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if command.lower() == "quit":
                 break
             if not command:
+                print("SCB > ", end="", flush=True)
                 continue
             try:
                 is_motion = command.split()[0] in {"MOVE", "GOTO", "JOG"}
-                print(link.request(command, timeout=30 if is_motion else 2, wait_done=is_motion))
-                while not link.events.empty():
-                    print(link.events.get_nowait())
+                print(format_frame(link.request(command, timeout=30 if is_motion else 2,
+                                               wait_done=is_motion)))
             except (DeviceError, TimeoutError, ValueError) as exc:
                 print(exc)
+            print("SCB > ", end="", flush=True)

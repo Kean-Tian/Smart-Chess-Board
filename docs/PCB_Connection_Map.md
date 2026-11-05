@@ -1,76 +1,86 @@
-# WeMos LOLIN32 Bench Connections
+# ESP32-S2-Saola-1 Bench Connections
 
-Current target: **WeMos LOLIN32 V1.0.0, ESP-WROOM-32 / classic ESP32**, 4 MB Flash, no PSRAM. This follows the exact pinout supplied by the user and the WEMOS V1.0.0 schematic linked there. It is a proposed jumper-wire controller for the existing sensor/driver boards, not the copper routing of the earlier Master PCB. Pin assignments and firmware have not been validated on connected hardware.
+Current controller: **ESP32-S2-Saola-1**, 4 MB Flash, PSRAM disabled. This is the current jumper-wire connection to Sensor PCB V2 and the driver boards. The retained original Master PCB schematic is not an S2 board design. Basic S2 USB communication and scan-frame generation have been tested; complete electrical, sensor-coordinate and actuator validation remains pending.
 
-## GPIO and UART Mapping
+## Current GPIO Map
 
-Use the GPIO labels on the pinout. Adjacent chip/package pin numbers are not GPIO numbers and are not breadboard header indices.
+Use printed **GPIO numbers**, not connector positions or module pad numbers.
 
-| Existing function / net | LOLIN32 GPIO | Board label / role |
+| Function / net | S2 GPIO | Role |
 |---|---:|---|
-| LED_IN_3V3 into external 74AHCT1G125 | 4 | 4; external RGB data |
-| MUX_IN1 / row A0 | 16 | 16 / RX2; row address, not UART2 |
-| MUX_IN2 / row A1 | 17 | 17 / TX2; row address, not UART2 |
-| MUX_IN3 / row A2 | 18 | 18; row address |
-| DIG_OUT1 / file a | 36 | VP; input only |
-| DIG_OUT2 / file b | 39 | VN; input only |
-| DIG_OUT3 / file c | 34 | 34; input only |
-| DIG_OUT4 / file d | 35 | 35; input only |
-| DIG_OUT5 / file e | 32 | 32; digital input |
-| DIG_OUT6 / file f | 33 | 33; digital input |
-| DIG_OUT7 / file g | 25 | 25; digital input |
-| DIG_OUT8 / file h | 26 | 26; digital input |
-| EM_CTRL into external MOSFET driver | 27 | 27 |
-| X_STEP into A4988 | 19 | 19 |
-| X_DIR into A4988 | 21 | 21 |
-| Y_STEP into A4988 | 22 | 22 |
-| Y_DIR into A4988 | 23 | 23 |
-| MOTOR_EN, shared active-low A4988 enable | 13 | 13; add external 10k pull-up to 3.3 V |
-| UART0 TX | 1 | TX; already connected to onboard USB-UART bridge |
-| UART0 RX | 3 | RX; already connected to onboard USB-UART bridge |
+| MUX_IN1 / A0 | 36 | Least-significant row-select bit; output |
+| MUX_IN2 / A1 | 37 | Row-select bit; output |
+| MUX_IN3 / A2 | 38 | Most-significant row-select bit; output |
+| DIG_OUT1 | 1 | Digital sensor input; logical file a with current flags |
+| DIG_OUT2 | 2 | Digital sensor input; logical file b |
+| DIG_OUT3 | 3 | Digital sensor input; logical file c |
+| DIG_OUT4 | 4 | Digital sensor input; logical file d |
+| DIG_OUT5 | 5 | Digital sensor input; logical file e |
+| DIG_OUT6 | 6 | Digital sensor input; logical file f |
+| DIG_OUT7 | 7 | Digital sensor input; logical file g |
+| DIG_OUT8 | 8 | Digital sensor input; logical file h |
+| External RGB data into level shifter | 17 | Output; not the onboard RGB LED |
+| Electromagnet control into driver | 12 | Output |
+| X STEP / DIR | 14 / 21 | Outputs into motor driver |
+| Y STEP / DIR | 15 / 16 | Outputs into motor driver |
+| Shared motor enable | 13 | Active-low output; external 10k pull-up to 3.3 V |
+| UART0 TX / RX | 43 / 44 | Reserved for onboard USB-UART bridge |
 
-The map uses 18 external control/sensor signals plus UART0 TX/RX. GPIO14 remains spare. GPIO0/2/5/12/15 are excluded from the external harness because they are boot straps. GPIO6-11 are reserved for Flash. GPIO24 and GPIO28 do not exist on this classic ESP32 pinout. GPIO34/35/36/39 are never configured as outputs.
+GPIO1..8 remain inputs with internal pull-up/down disabled. Use the sensor board's 3.3 V comparator pull-ups; never drive these inputs to force a reading. The current measured polarity is HIGH when a magnet is present.
 
-## USB Connection and Pin Restrictions
+## Sensor PCB V2 J1 Contacts
 
-- Use the board's **Micro-USB data connector**. The WEMOS V1.0.0 schematic uses a CP2104 USB-UART bridge connected to GPIO1/GPIO3. The ESP32 does not have the native USB Serial/JTAG peripheral used by the previous firmware target.
-- The application uses UART0 at **115200 baud, 8N1, no hardware flow control**. The baud rate must match the host. Leave the TX/RX header pins free and do not attach another active UART transmitter to them.
-- Linux commonly assigns `/dev/ttyUSB0`; macOS may use `/dev/cu.SLAB_USBtoUART` or `/dev/cu.usbserial-*`. Use the actual port from `python -m serial.tools.list_ports -v`. A clone may use a different USB-UART chip or connector, so check its physical labels before wiring.
-- GPIO34-39 have no internal pull-up/down. Use the sensor board's external **3.3 V pull-ups** for all LM339 digital outputs. These are digital occupancy inputs, not ADC readings. Never apply 5 V logic to them.
-- GPIO16/17 are available on the specified WROOM board without PSRAM. This map is not for a WROVER/PSRAM board.
-- The onboard user LED is active-low GPIO5; it is not mapped to the magnet or external RGB commands. The previous MAGNET/onboard-D13 light test does not apply. PING/STATUS are the USB-only checks; use an external RGB chain for LED commands.
-- Add the **10k MOTOR_EN/GPIO13 pull-up** before connecting motor drivers. It keeps them disabled while the chip is reset, unpowered, or being flashed. Firmware sets EN HIGH and EM_CTRL LOW before normal control starts. Keep actuator power disabled during flashing.
-- Connect common ground between logic and driver supplies. Do not directly drive coils or the electromagnet from GPIO. Keep the external A4988/MOSFET driver and RGB level shifter. Power motors/magnet/LEDs from appropriate external supplies, not the LOLIN32 3.3 V rail.
-- If the existing PCB already supplies 3.3 V, do not tie two independent regulator outputs together. Check the intended supply and common reference before connecting USB. Isolate any populated original MCU outputs before attaching this replacement harness.
-- This board has EN/RESET and GPIO0-based download circuitry, not the FireBeetle GPIO28 BOOT arrangement. If auto-download fails, use an appropriate GPIO0-to-GND download jumper while resetting EN, then release GPIO0 after flashing. Do this with external actuator power off. No eFuse changes or force-flashing are required.
+The user confirmed wiring **by DIG_OUT signal name**, not J1 contact number. The following order comes from the supplied `SCBSensorPCBV2.kicad_sch`; it replaces the older Sensor PCB ribbon table.
 
-## Existing Sensor Ribbon Contacts
-
-| Master J4 / Sensor J1 contact | Net | LOLIN32 GPIO |
-|---:|---|---:|
-| 1 | DIG_OUT3 | 34 |
-| 2 | DIG_OUT7 | 25 |
-| 3 | DIG_OUT4 | 35 |
-| 4 | DIG_OUT8 | 26 |
-| 5 | DIG_OUT6 | 33 |
-| 6 | DIG_OUT2 | 39 |
-| 7 | DIG_OUT5 | 32 |
-| 8 | DIG_OUT1 | 36 |
-| 9 | LED_IN after external level conversion | 4 through buffer |
-| 10 | GND | GND |
-| 11 | MUX_IN1 | 16 |
-| 12 | GND | GND |
-| 13 | MUX_IN2 | 17 |
+| J1 contact | Signal | S2 connection |
+|---:|---|---|
+| 1 | DIG_OUT2 | GPIO2 |
+| 2 | DIG_OUT3 | GPIO3 |
+| 3 | DIG_OUT1 | GPIO1 |
+| 4 | DIG_OUT4 | GPIO4 |
+| 5 | DIG_OUT6 | GPIO6 |
+| 6 | DIG_OUT7 | GPIO7 |
+| 7 | DIG_OUT5 | GPIO5 |
+| 8 | DIG_OUT8 | GPIO8 |
+| 9 | LED_IN | GPIO17 through the required level conversion |
+| 10 | GND | Common ground |
+| 11 | MUX_IN1 / A0 | GPIO36 |
+| 12 | GND | Common ground |
+| 13 | MUX_IN2 / A1 | GPIO37 |
 | 14 | +3V3 | Verified sensor logic supply |
-| 15 | MUX_IN3 | 18 |
+| 15 | MUX_IN3 / A2 | GPIO38 |
 | 16 | +5V | Verified external LED/buffer supply |
 
-The ribbon contact order is not DIG_OUT1,2,3... . Default LOW means occupied. Confirm a1/h1/a8/h8 before gameplay. LED0 defaults to a1 with serpentine rows. Orientation flips remain in main/board_pins.h.
+## Decoder and Logical Coordinate Mapping
 
-## Sources
+U5 (74HC138) selects one of eight active-low row outputs. The following 74HC04 inverters supply the selected sensor row. Column signals pass through the sensor-board diode/comparator circuitry to DIG_OUT1..8.
 
-- [User-specified LOLIN32 pinout](https://mischianti.org/esp32-wemos-lolin32-high-resolution-pinout-and-specs/)
-- [WEMOS LOLIN32 V1.0.0 schematic, mirrored with that pinout](https://mischianti.org/wp-content/uploads/2023/11/schematic_wemos_lolin32_v1.0.0.pdf)
-- [Espressif ESP32-WROOM-32 datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.html)
-- [Espressif GPIO restrictions](https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32/api-reference/peripherals/gpio.html)
-- [ESP-IDF UART API](https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32/api-reference/peripherals/uart.html)
+| Address index | Printed MUX A2,A1,A0 | GPIO36,37,38 (A0,A1,A2) | Schematic sensors | Current logical rank |
+|---:|---|---|---|---:|
+| 0 | 000 | 000 | HE1–HE8 | 1 |
+| 1 | 001 | 100 | HE9–HE16 | 2 |
+| 2 | 010 | 010 | HE17–HE24 | 3 |
+| 3 | 011 | 110 | HE25–HE32 | 4 |
+| 4 | 100 | 001 | HE33–HE40 | 5 |
+| 5 | 101 | 101 | HE41–HE48 | 6 |
+| 6 | 110 | 011 | HE49–HE56 | 7 |
+| 7 | 111 | 111 | HE57–HE64 | 8 |
+
+`INPUTS(DIG_OUT1..8)` is printed in signal order: `10000000` means DIG_OUT1 is HIGH, and `00000001` means DIG_OUT8 is HIGH. It is not a conventional most-significant-bit-first binary number.
+
+With both sensor orientation flags zero, address 000 / DIG_OUT8 maps to logical `h1` and schematic sensor HE8. **It does not establish a physical top-right corner.** The user reported that this sensor was at the physical lower-left in the tested board placement. Four-corner and complete-grid calibration are still required. Keep electrical mapping, schematic placement and physical viewing direction separate. LED orientation has independent flags and also requires testing.
+
+## USB and Electrical Constraints
+
+- The board Micro-USB connector uses the onboard USB-UART bridge and GPIO43/44 at 115200 baud, 8N1. GPIO1/3 are ordinary sensor inputs on this S2 map. Native USB pins GPIO19/20 are unused.
+- GPIO46 cannot drive a MUX output. GPIO0/45/46 are excluded from the harness; GPIO22–25 do not exist on S2 and GPIO26–32 are excluded for module memory. GPIO18 is the onboard RGB LED and is unused.
+- Connect logic grounds. Use 3.3 V logic. Keep external motor, magnet and LED power on the intended driver supplies; never drive a coil directly from a GPIO.
+- Add the motor-enable pull-up before actuator tests. Avoid connecting independent regulator outputs together or attaching the replacement controller to another MCU's active outputs.
+- For manual download, hold BOOT, press/release RESET, then release BOOT when esptool connects. Close serial clients before flashing. See the [S2 test guide](ESP32_S2_Test_Guide.md).
+
+## References
+
+- [Supplied Sensor PCB V2 schematic](../hardware/reference/SCBSensorPCBV2.kicad_sch)
+- [Espressif Saola-1 board guide and header table](https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32s2/hw-reference/esp32s2/user-guide-saola-1-v1.2.html)
+- [Espressif ESP32-S2 GPIO reference](https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32s2/api-reference/peripherals/gpio.html)
+- `esp32/main/board_pins.h` is the current firmware pin definition.

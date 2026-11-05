@@ -1,85 +1,87 @@
-# MCU–Pi USB 协议 v1
+# MCU–Pi USB Protocol v1
 
-WeMos LOLIN32（经典 ESP32 / ESP-WROOM-32）通过板载 Micro-USB 和 CP2104 USB-UART 桥连接 Pi／电脑。MCU 使用 UART0：TX=GPIO1、RX=GPIO3，115200 baud、8N1、无硬件流控。Pi 常见 `/dev/ttyUSB0`；macOS 可能是 `/dev/cu.SLAB_USBtoUART` 或 `/dev/cu.usbserial-*`，以实际枚举为准。GPIO1/3 不接棋盘外设。客户端打开串口前释放 DTR/RTS，并等待 0.5 秒让可能的复位瞬态结束。
+The current MCU is **ESP32-S2-Saola-1**. The board's Micro-USB connector uses its USB-UART bridge, with UART0 TX=GPIO43 and RX=GPIO44, at 115200 baud, 8N1, without hardware flow control. GPIO1..8 are sensor inputs. Linux commonly uses `/dev/ttyUSB0`; macOS uses a detected `/dev/cu.usbserial-*` port. The Python client deasserts DTR/RTS before opening, waits 0.5 s, then checks PING.
 
-## 帧格式
+## Framing
 
-- ASCII，每行以 LF 结束，允许 CRLF。
-- `@42 STATUS`：可选非负请求 ID，范围 0..2147483647；不带 `@ID` 时 ID=0。
-- 请求行含前缀最多 127 字节。溢出或含非 ASCII 控制字节时，丢弃整行直至 LF，防止尾部被误当作另一条命令。
-- 回复：`ACK 42 COMMAND`、`ERR 42 REASON`、`DONE 42 MOTION`。
-- `STATUS` 直接回复 `STATUS 42 armed=0 moving=0 magnet=0 origin=0 steps=0`。
-- 主动事件：`BOARD <16位HEX>`、`EVENT ...`、`FAULT ...`、`HELLO SCB_LOLIN32 1`。
-- BOARD/RAW 的 bit0=a1，bit63=h8。BOARD 是去抖后的完整帧，RAW 是最近完成扫描的完整原始帧。
-- TX 队列满时只丢整帧，不截断拼接；客户端可能超时。读状态可以重新查询，**运动请求不能自动重试**。
+- ASCII lines end in LF; CRLF is accepted.
+- `@42 STATUS` uses an optional nonnegative request ID, 0..2147483647. Omitting the prefix uses ID 0. The Python client supplies IDs to match concurrent replies.
+- Requests have a maximum of 127 bytes before LF. Overflow or invalid control bytes cause the complete line to be discarded through LF.
+- Replies include `ACK 42 COMMAND`, `ERR 42 REASON`, `DONE 42 MOTION` and `STATUS 42 armed=0 moving=0 magnet=0 origin=0 steps=0 polarity=HIGH`.
+- Boot identifier: `HELLO SCB_S2_SAOLA_1 1`. It is sent once and may be missed when opening later.
+- Unsolicited messages include BOARD, SENSOR, EVENT and FAULT.
+- BOARD/RAW masks contain exactly 16 hexadecimal digits, with bit0=a1, bit7=h1 and bit63=h8. These are logical coordinates; physical board orientation is not yet calibrated.
+- Under TX backpressure, only complete lines are dropped. A command may then time out. Motion requests must not be automatically replayed.
 
-## 命令
-
-| 请求 | 行为 |
-|---|---|
-| `PING` | 更新心跳。只有 PING 更新链路保活计时 |
-| `TIMING` | 返回整盘扫描帧数、最新/最大帧周期、>=20 ms 超限次数及消抖确认间隔（微秒） |
-| `PLATFORM` | 返回 LED 队列至 RMT 完成延迟、>=100 ms 超限/失败次数、内部空闲堆及历史最低值 |
-| `STATUS` | 返回使能、运动、电磁铁、人工参考、每格步数 |
-| `SCAN` | 报告稳定 BOARD；尚无稳定帧时 `NOT_READY` |
-| `RAW` | 报告最近完整 RAW 帧 |
-| `POLARITY LOW` / `HIGH` | 占位极性，重新建立去抖与事件基线 |
-| `LED e4 0 20 0` | 接受 RGB 0..255，每通道实际限制到 32 以降低资源负担；其他格保留 |
-| `LED_CLEAR` | 全部清零 |
-| `MARK e2 e4 LEGAL` | 清屏，源格蓝、目标格绿 |
-| `MARK e2 e5 ILLEGAL` | 清屏，源格和目标格红 |
-| `SET_STEPS n` | 每格完整步数 1..2000，清除旧坐标参考；无默认校准值 |
-| `ORIGIN a1` | 记录当前人工对准的格心，不移动机构 |
-| `ARM` | 允许运动／电磁铁，必须先收到新鲜 PING |
-| `DISARM` / `STOP` | 禁止运动、释放电磁铁、禁用电机，清除坐标参考 |
-| `GOTO e2` | 电磁铁关闭，按已知坐标移到源格；需 ARM、校准、人工参考 |
-| `MOVE e2 e4` | 当前必须已对准 e2；吸合、等待、先 X 后 Y、释放 |
-| `JOG X 20` / `JOG Y -20` | 台架相对步进，范围 ±1..1000，需 ARM；清除绝对参考 |
-| `MAGNET ON` / `OFF` | 手动电磁铁开关，ON 需 ARM；运动中不允许改单独开关 |
-| `HOME` | 返回 `NO_HOME_SWITCHES`，不执行伪归零 |
-
-MOVE/GOTO/JOG 先返回 `ACK id MOTION`，结束返回 `DONE id MOTION`；中断则为 `ERR id ...`。DONE 表示已发出步进脉冲，**不是棋子成功移动确认**。必须另查 BOARD 比较物理局面。
-
-## 时序与边界
-
-- Pi 客户端每 0.5 秒发 PING；MCU 2 秒无心跳后关闭输出并清除参考。断线检测依赖这个超时，不声称即时检测拔线。
-- 默认电磁铁连续 ON 上限 5 秒，运动上限 30 秒；重复 ON 不会重置连续通电计时。
-- 默认每个轴最大调度速率约 100 steps/s；使用非阻塞软件调度，一次只推进一轴。任务延迟会降低实际速率，不会补发脉冲突发。
-- `MOVE` 仅为基础先 X 后 Y 搬运，没有碰撞路径规划、吃子移出路线、闭环位置反馈或归零。
-- `JOG` 用于机构台架校准，位置未知时也可使用，因此软件无法判断机构是否靠近机械边界。
-- 电磁铁工作期间的占位变化只作为 BOARD 数据，不能直接当成人类走法。运动结束后重新建立传感事件基线。
-- `EVENT MOVE e2e4` 是候选移动，不包含合法性判断。多格同时变化报告 `AMBIGUOUS`，由 Pi 决定如何处理。
-
-## Pi 接入
-
-`pi5/app/scb_link.py` 提供独立读取线程、请求 ID 匹配、异步事件队列和心跳。运动超时会发 STOP，不会重新发送 MOVE。
-`pi5/app/board_game.py` 把候选走法接回现有 libchess 规则库，同时比较完整占位。非法走法不更新逻辑局面，必须恢复后才能继续。
-易位、多格同时变化、传感事件不明确时可人工输入 `commit <uci>`；升变必须明确 q/r/b/n。`sh pi5/start.sh board` 可选择 Local Mode（Stockfish）或 AI Mode（OpenRouter），电脑走法由 LED 提示，人工执行后确认占位。OpenRouter 失败后输入 `retry` 重试；对局不会自动 ARM 或调用电机搬棋。
-
-## 使用示例
-
-先运行 Pi 客户端，使心跳持续工作。然后逐条输入：
+## Sensor Messages and Display
 
 ```text
-STATUS
-SCAN
-LED a1 20 0 0
-LED_CLEAR
-SET_STEPS 200
-ORIGIN a1
-ARM
-GOTO e2
-MOVE e2 e4
-STOP
+BOARD 0000000000000080
+SENSOR frame=2 mux=000 A0=36:0 A1=37:0 A2=38:0 inputs=00000001 occupy=0000000000000080 polarity=HIGH
 ```
 
-`200` 只是语法示例，不能当作这套机构的实测每格步数。GOTO/MOVE 只能在已确认步数、方向、人工参考、机构路径和电磁铁工作条件后使用。
+The Python terminal renders these as:
 
-## 2026-10-29 时序更新
+```text
+BOARD | OCCUPY=h1
+MUX(A2,A1,A0)=000 [GPIO36,37,38=000] | INPUTS(DIG_OUT1..8)=00000001 | OCCUPY=h1 | frame=2
+```
 
-整盘目标 100 Hz（10 ms），消抖为两张完整一致帧；首张候选帧到确认名义间隔 10 ms，不代表从物理变化到显示的总延迟。LED 采用独立任务和单项覆盖队列，ACK 表示已接受，较新的未发送状态可替换旧状态。PLATFORM 的 LED 延迟是入队至 RMT 完成，非光学测量。LOLIN32 控制任务运行在 core 1，LED 和串口输出运行在 core 0；RMT 使用无 DMA 的中断补充方式，实际时序需测量。Pi 在后台运行 Stockfish，默认 3 秒，游戏入口允许 2–5 秒；棋盘事件轮询为 5 ms。详细验收与未验证项见 Specification_Alignment.md。
+- `mux` is A2,A1,A0; the bracketed GPIO levels are A0,A1,A2. Address 001 therefore has GPIO36,37,38 = 100.
+- `inputs` contains the captured raw electrical levels in DIG_OUT1..8 order. Its leftmost character is DIG_OUT1, not DIG_OUT8.
+- `occupy` is the whole debounced board, not just this row. Raw inputs, row address and occupancy belong to the same accepted frame.
+- HIGH currently means occupied. Empty/full terminal masks display `无棋子` / `全部64格`; the transmitted masks remain hexadecimal.
+- Automatic SENSOR reports cover occupied rows after board changes and are coalesced to at most five snapshots per second, with up to eight row lines per snapshot. This is a debug-output limit, not a 5 Hz scan rate. SCAN forces an immediate snapshot of the latest stable occupied rows. An empty board produces BOARD zero without occupied-row SENSOR lines.
+- `frame` identifies the accepted scan frame. It is not a square number. A logical `h1` result does not by itself mean physical top-right; the user observed it at physical lower-left. See the orientation procedure in the test guide.
 
+## Commands
 
-## LOLIN32 接线变化
+| Request | Behavior |
+|---|---|
+| `PING` | Refresh the heartbeat; other commands do not refresh it |
+| `STATUS` | Armed/moving/magnet state, manual origin, steps per square and polarity |
+| `INPUTS` | Instantaneous GPIO1..8 electrical levels, in DIG_OUT order; not a full scan or necessarily the row in the last SENSOR report |
+| `SCAN` | Report the latest stable whole BOARD and occupied-row SENSOR snapshot, then ACK; NOT_READY until a stable frame exists |
+| `RAW` | Report the most recent complete, polarity-normalized pre-debounce RAW board, then ACK; also requires the initial stable frame |
+| `TIMING` | Complete-frame count, last/maximum interval, intervals >=20 ms and candidate-to-accept debounce time, in microseconds |
+| `PLATFORM` | LED queue-to-RMT-completion timing, >=100 ms counts/failures and free/minimum internal heap |
+| `POLARITY HIGH` / `LOW` | Select occupied input level; reset debounce, move baseline and scan timing counters |
+| `LED e4 0 20 0` | Set an external RGB square; accept 0..255 and cap actual channels at 32; preserve other pixels |
+| `LED_CLEAR` | Clear all external RGB pixels |
+| `MARK e2 e4 LEGAL` | Clear pixels; source blue and destination green |
+| `MARK e2 e5 ILLEGAL` | Clear pixels; source and destination red |
+| `SET_STEPS n` | Set 1..2000 steps per square and invalidate the old origin; no assumed calibration |
+| `ORIGIN a1` | Record manual alignment without moving |
+| `ARM` | Enable actuator commands after a fresh PING |
+| `STOP` / `DISARM` | Abort motion, release magnet, disable motors and invalidate origin; scanning and reports continue |
+| `GOTO e2` | Move to a square with magnet off; requires ARM, calibration and origin |
+| `MOVE e2 e4` | Require alignment at e2, energize magnet, wait, move X then Y and release |
+| `JOG X 20` / `JOG Y -20` | Bench relative steps, magnitude 1..1000; requires ARM, invalidates origin |
+| `MAGNET ON` / `OFF` | Manual magnet control; ON requires ARM; cannot override during movement |
+| `HOME` | Return NO_HOME_SWITCHES; no automatic homing is implemented |
 
-当前 RGB 数据为 GPIO4；传感器行地址为 16/17/18；八路数字输入为 36/39/34/35/32/33/25/26；电磁铁为 27；X STEP/DIR=19/21，Y STEP/DIR=22/23，共用 EN=13。GPIO34/35/36/39 只作输入，必须保留传感器板的外部 3.3 V 上拉。板载 LED 在 GPIO5，与 MAGNET 命令无关。完整排线表见 PCB_Connection_Map.md。
+MOVE/GOTO/JOG return ACK id MOTION and later DONE id MOTION or ERR id reason. DONE confirms commanded pulses, not successful physical transport. Compare BOARD separately.
+
+## Timing and Fault Handling
+
+The Python client sends PING every 0.5 s. The MCU disables actuators after 2 s without PING while armed or active. Magnet ON is limited to 5 s and motion to 30 s. Repeated ON does not extend continuous energization. The default step schedule is approximately 100 steps/s per active axis, X then Y; delays reduce rate without catch-up bursts. LED output failure also shuts down actuators.
+
+A 1 ms control task schedules nominal 10 ms complete-board frames with 1 ms row settling and two matching frames for debounce. The S2 has one CPU: control priority 10, serial 4, LED 3. RMT uses interrupt refilling without DMA. LED ACK means queued, not illuminated. PLATFORM does not measure optical latency. See [specification alignment](Specification_Alignment.md).
+
+Motion-time occupancy is telemetry, not a human move; the move baseline is re-established afterward. EVENT MOVE is a candidate, not proof of legality. Multiple simultaneous changes can produce AMBIGUOUS. The Pi rules layer validates moves and compares occupancy. Recovery requires restoring the physical board when a move is rejected.
+
+## Python Clients
+
+`pi5/app/scb_link.py` owns the serial reader, request matching, event queue and heartbeat. Its terminal drains events while waiting for keyboard input; no Enter key is required to show sensor changes. Request timeout sends STOP and raises an error without retrying motion. `quit`/Ctrl-C closes the client and sends STOP. This does not mute firmware scanning; close the terminal to stop its display, and remove power to stop all MCU activity.
+
+`pi5/app/board_game.py` handles rules and physical synchronization. Board mode can indicate computer moves through external LEDs and asks for manual execution; it does not automatically ARM or move motors. Promotions or ambiguous changes can use `commit <uci>` with matching occupancy. Motor path planning, automatic captures and homing are not implemented.
+
+## Initial Sensor Test
+
+From the project root:
+
+```sh
+esp32/.venv/bin/python pi5/app/scb_link.py --port PORT
+```
+
+Enter PING, STATUS, SCAN, RAW, INPUTS and TIMING. Keep actuator power disconnected. Use [the S2 test guide](ESP32_S2_Test_Guide.md) before LED or motion testing; no universal steps-per-square calibration is supplied.

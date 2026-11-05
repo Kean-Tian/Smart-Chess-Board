@@ -1,0 +1,11 @@
+Serial handshake: PASS
+Frame(kind='STATUS', request_id=413478513, payload='armed=0 moving=0 magnet=0 origin=0 steps=0')
+Frame(kind='STATUS', request_id=413478514, payload='inputs=00000000')
+Frame(kind='ACK', request_id=413478515, payload='SCAN')
+Frame(kind='BOARD', request_id=None, payload='FFFFFFFFFFFFFFFF')
+Frame(kind='ACK', request_id=413478516, payload='RAW')
+Frame(kind='RAW', request_id=None, payload='FFFFFFFFFFFFFFFF')
+Frame(kind='TIMING', request_id=413478517, payload='frames=92 frame_us=10000 max_us=12000 misses=0 debounce_us=9000')
+Frame(kind='TIMING', request_id=413478519, payload='frames=117 frame_us=10000 max_us=12000 misses=0 debounce_us=9000')
+PASS: full-board frames advancing; SCAN/RAW return 64-bit occupancy; motors remain disarmed.
+Physical row/column accuracy requires the user to move a piece across the board.

@@ -1,0 +1,90 @@
+{
+  "date": "2026-11-03",
+  "layout": {
+    "pi5": "Pi application, rules, engine, dependencies and tests",
+    "esp32": "MCU firmware, portable board logic, tests and release images"
+  },
+  "host_ctest": {
+    "passed": 10,
+    "total": 10
+  },
+  "pi5_standalone_host_ctest": {
+    "passed": 6,
+    "total": 6,
+    "note": "Previous pre-LOLIN32 validation only; Pi-only copy was not rebuilt in this migration."
+  },
+  "mac_entry_real_engine": "passed: ten suites, LOLIN32-mapped portable core and real Stockfish/libchess integration",
+  "esp32_target_build": "passed: native ESP-IDF 5.5.3 / Xtensa esp-14.2.0_20251107",
+  "static_internal_ram_bytes": 79944,
+  "static_control_ram_limit_bytes": 270336,
+  "nominal_full_board_hz": 100,
+  "simulated_full_board_hz": 100,
+  "debounce_matching_frames": 2,
+  "simulated_debounce_candidate_to_accept_us": 10000,
+  "hardware_executed": false,
+  "hardware_scan_or_led_latency_measured": false,
+  "gpio_assignments": "18 external signals plus UART0 GPIO1/GPIO3; no Flash or boot straps in external harness; GPIO34/35/36/39 input-only",
+  "engine_timing": {
+    "platform": "macOS arm64, not Pi hardware",
+    "threads": 1,
+    "hash_mb": 16,
+    "engine_trials": [
+      {
+        "target_ms": 2000,
+        "observed_ms": 2000.64,
+        "legal_move": "e2e4"
+      },
+      {
+        "target_ms": 3000,
+        "observed_ms": 3000.45,
+        "legal_move": "d2d4"
+      },
+      {
+        "target_ms": 5000,
+        "observed_ms": 4949.47,
+        "legal_move": "g1f3"
+      }
+    ]
+  },
+  "hardware_requirements_pending": [
+    "Pi execution and timing",
+    "actual scan rate and input stability",
+    "end-to-end LED/visual latency",
+    "whole-system power",
+    "ambient/enclosure thermal qualification",
+    "physical geometry and weight",
+    "battery runtime and charging",
+    "BOM and price targets"
+  ],
+  "specification_conflict": "264–520 KB search SRAM does not apply to Stockfish in Pi DRAM. The 264 KiB firmware static-RAM guard is a separate control-program budget.",
+  "pull_integration": {
+    "remote_commit": "31c0d249a423386fd5c8324db3e212275981720b",
+    "local_changes_preserved": true,
+    "menu_quit_smoke": "passed",
+    "local_game_smoke": "passed",
+    "normal_startup_checks_hidden": "passed"
+  },
+  "mcu_board": "WeMos LOLIN32 V1.0.0",
+  "mcu_module": "ESP-WROOM-32",
+  "mcu_chip": "esp32",
+  "lolin32_migration": {
+    "transport": "CP2104 USB-UART bridge -> UART0 GPIO1 TX / GPIO3 RX, 115200 8N1",
+    "cpu": "dual-core 240 MHz Xtensa; control on core 1; serial/LED on core 0",
+    "rmt_dma": false,
+    "rmt_buffer_symbols": 128,
+    "flash_size": "4MB",
+    "flash_freq": "40m",
+    "bootloader_address": "0x1000",
+    "release_chip_headers": "classic ESP32 (0)",
+    "release_image_checksums": "passed",
+    "flash_dry_run": "passed; no serial port opened",
+    "uart_open_regressions": "passed: DTR/RTS deasserted before open, startup settle, close on failure",
+    "host_ctest": {
+      "passed": 10,
+      "total": 10
+    },
+    "hardware_executed": false,
+    "wiring_requirements": "GPIO13 external 10k enable pull-up; 3.3 V external comparator pull-ups on all columns, required for input-only GPIO34-39",
+    "onboard_led": "GPIO5 active-low; intentionally unused, not MAGNET output"
+  }
+}

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+set(IDF_TARGET "esp32s2" CACHE STRING "ESP32-S2-Saola-1")
+set(COMPONENTS main)
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(scb_s2_a0_high_test)
+if(NOT IDF_TARGET STREQUAL "esp32s2")
+    message(FATAL_ERROR "This GPIO test requires ESP32-S2-Saola-1")
+endif()

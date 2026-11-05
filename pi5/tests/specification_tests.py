@@ -64,6 +64,17 @@ class SpecificationTests(unittest.TestCase):
 """
         self.assertEqual(module.static_ram_bytes(sections), 66592)
 
+    def test_sensor_only_diagnostics_does_not_claim_led_verification(self):
+        timing = dict(max_us=10000, misses=0)
+        platform = dict(max_us=0, late=0, failed=0)
+        report = assess(timing, platform, 10, 1000, require_led=False)
+        self.assertTrue(report['scan_pass'] and report['overall_pass'])
+        self.assertFalse(report['led_exercise_requested'])
+        self.assertIsNone(report['led_software_pass'])
+        self.assertFalse(assess(timing, platform, 10, 1000)['overall_pass'])
+        self.assertFalse(assess(dict(max_us=20000, misses=1), platform,
+                                10, 1000, require_led=False)['overall_pass'])
+
 
 @unittest.skipUnless((ROOT / "esp32/scripts/flash_firmware.py").is_file(), "Standalone Pi has no MCU release")
 class FirmwareReleaseTests(unittest.TestCase):
@@ -75,7 +86,7 @@ class FirmwareReleaseTests(unittest.TestCase):
         spec.loader.exec_module(cls.flash)
         cls.release = ROOT / "esp32/release"
 
-    def test_release_is_esp32_and_dry_run_never_opens_serial(self):
+    def test_release_is_esp32s2_and_dry_run_never_opens_serial(self):
         files = self.flash.validate_release(self.release)
         self.assertEqual(files[::2], ["0x1000", "0x8000", "0x10000"])
         with patch.object(self.flash, "RELEASE", self.release), \
@@ -83,27 +94,39 @@ class FirmwareReleaseTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(self.flash.main(["--port", "not-a-real-port", "--dry-run"]), 0)
         execute.assert_not_called()
-        self.assertIn("--chip esp32 ", output.getvalue())
+        self.assertIn("--chip esp32s2 ", output.getvalue())
+        self.assertIn("--baud 115200 ", output.getvalue())
         self.assertNotIn("--no-stub", output.getvalue())
 
     def test_corrupt_or_other_chip_image_is_rejected(self):
-        for other_chip in [False, True]:
+        for other_chip in [None, 0, 9]:
             with self.subTest(other_chip=other_chip), tempfile.TemporaryDirectory() as directory:
                 temp = Path(directory)
                 for name in ["flash_manifest.json", "bootloader.bin", "partitions.bin", "firmware.bin"]:
                     shutil.copy2(self.release / name, temp / name)
                 path = temp / "firmware.bin"
                 data = bytearray(path.read_bytes())
-                if other_chip:
-                    struct.pack_into("<H", data, 12, 9)  # ESP32-S3 executable, with a matching checksum.
+                if other_chip is not None:
+                    # Reject old classic ESP32 and ESP32-S3 images even with valid hashes.
+                    struct.pack_into("<H", data, 12, other_chip)
                     manifest = json.loads((temp / "flash_manifest.json").read_text())
                     next(item for item in manifest["images"] if item["file"] == "firmware.bin")["sha256"] = hashlib.sha256(data).hexdigest()
                     (temp / "flash_manifest.json").write_text(json.dumps(manifest))
                 else:
                     data[-1] ^= 1
                 path.write_bytes(data)
-                with self.assertRaisesRegex(ValueError, "not a classic ESP32" if other_chip else "checksum mismatch"):
+                with self.assertRaisesRegex(ValueError, "not an ESP32-S2" if other_chip is not None else "checksum mismatch"):
                     self.flash.validate_release(temp)
+
+    def test_uncompressed_low_baud_flash_is_explicit_and_dry_run_only(self):
+        with patch.object(self.flash, 'RELEASE', self.release), \
+                patch.object(self.flash.subprocess, 'call') as execute, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(self.flash.main(['--port', 'not-a-real-port', '--baud', '57600',
+                                              '--no-compress', '--dry-run']), 0)
+        execute.assert_not_called()
+        self.assertIn('--chip esp32s2 ', output.getvalue())
+        self.assertIn('--baud 57600 write_flash --no-compress ', output.getvalue())
 
     def test_previous_chip_bootloader_address_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

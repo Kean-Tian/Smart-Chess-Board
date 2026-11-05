@@ -1,90 +1,123 @@
 {
-  "date": "2026-11-03",
-  "layout": {
-    "pi5": "Pi application, rules, engine, dependencies and tests",
-    "esp32": "MCU firmware, portable board logic, tests and release images"
+  "date": "2026-11-05",
+  "mcu_board": "ESP32-S2-Saola-1",
+  "mcu_chip": "esp32s2",
+  "mcu_module": "ESP32-S2-WROOM/WROVER; PSRAM disabled",
+  "transport": "Micro-USB onboard USB-UART bridge -> UART0 GPIO43 TX / GPIO44 RX, 115200 8N1",
+  "cpu": "single-core 240 MHz Xtensa; control priority10, serial4, LED3",
+  "gpio": {
+    "mux_A0_A1_A2": [
+      36,
+      37,
+      38
+    ],
+    "DIG_OUT1_to_8": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "external_rgb": 17,
+    "magnet": 12,
+    "X_STEP_DIR": [
+      14,
+      21
+    ],
+    "Y_STEP_DIR": [
+      15,
+      16
+    ],
+    "motor_enable": 13,
+    "uart_TX_RX": [
+      43,
+      44
+    ],
+    "occupied_level": "HIGH"
   },
   "host_ctest": {
     "passed": 10,
-    "total": 10
+    "total": 10,
+    "platform": "macOS arm64; simulated MCU GPIO and serial"
   },
   "pi5_standalone_host_ctest": {
-    "passed": 6,
-    "total": 6,
-    "note": "Previous pre-LOLIN32 validation only; Pi-only copy was not rebuilt in this migration."
+    "passed": 9,
+    "total": 9,
+    "platform": "macOS arm64; Pi source entry built separately, not a Pi 5 deployment"
   },
-  "mac_entry_real_engine": "passed: ten suites, LOLIN32-mapped portable core and real Stockfish/libchess integration",
-  "esp32_target_build": "passed: native ESP-IDF 5.5.3 / Xtensa esp-14.2.0_20251107",
-  "static_internal_ram_bytes": 79944,
-  "static_control_ram_limit_bytes": 270336,
-  "nominal_full_board_hz": 100,
-  "simulated_full_board_hz": 100,
-  "debounce_matching_frames": 2,
-  "simulated_debounce_candidate_to_accept_us": 10000,
-  "hardware_executed": false,
-  "hardware_scan_or_led_latency_measured": false,
-  "gpio_assignments": "18 external signals plus UART0 GPIO1/GPIO3; no Flash or boot straps in external harness; GPIO34/35/36/39 input-only",
-  "engine_timing": {
-    "platform": "macOS arm64, not Pi hardware",
-    "threads": 1,
-    "hash_mb": 16,
-    "engine_trials": [
-      {
-        "target_ms": 2000,
-        "observed_ms": 2000.64,
-        "legal_move": "e2e4"
-      },
-      {
-        "target_ms": 3000,
-        "observed_ms": 3000.45,
-        "legal_move": "d2d4"
-      },
-      {
-        "target_ms": 5000,
-        "observed_ms": 4949.47,
-        "legal_move": "g1f3"
-      }
-    ]
+  "mac_entry_real_engine": {
+    "passed": true,
+    "suites": 10,
+    "real_stockfish_plies": 12,
+    "mcu_target": "ESP32-S2-Saola-1",
+    "network_used": false,
+    "physical_hardware_used": false
+  },
+  "portable_core_sanitizer": "passed: undefined-behavior sanitizer, simulated GPIO",
+  "esp32_target_build": {
+    "passed": true,
+    "idf_version": "5.5.3",
+    "chip": "esp32s2",
+    "static_internal_ram_bytes": 74080,
+    "static_ram_limit_bytes": 270336,
+    "firmware_sha256": "606df43814100505b274499f39f5750c813032b478dc917bb86a950b62fd95f5",
+    "checksums_chip_headers_and_addresses": "passed",
+    "flash_dry_run": "passed: regular mode and explicit 57600-baud uncompressed mode via tests",
+    "flashed_in_this_update": false,
+    "latest_image_hardware_tested": false
+  },
+  "fixed_mux_bench_builds": {
+    "gpio_low": "passed: address000; no SCB UART or full scanning",
+    "gpio_a0_high": "passed: GPIO36/37/38=100, address001; UART diagnostics only",
+    "hardware_tested_in_this_update": false
+  },
+  "software_targets": {
+    "nominal_full_board_hz": 100,
+    "row_settle_us": 1000,
+    "matching_debounce_frames": 2,
+    "simulated_frame_us": 10000,
+    "simulated_candidate_to_accept_us": 10000,
+    "automatic_sensor_debug_snapshots_per_second_max": 5
+  },
+  "diagnostics": {
+    "default": "scan-only; led_software_pass is null",
+    "external_led_exercise": "explicit --exercise-leds; measures software completion, not optical latency"
+  },
+  "prior_s2_hardware_observations": {
+    "source": "history/S2_Initial_USB_Scan.txt",
+    "scope": "earlier S2 image/session; not a certification of the latest release",
+    "usb_handshake": "passed",
+    "SCAN_RAW_complete_64_bit_frames": "observed",
+    "last_frame_us": 10000,
+    "max_frame_us": 12000,
+    "scan_misses": 0,
+    "polarity_at_that_session": "old LOW interpretation; zero electrical inputs produced an inverted full mask",
+    "physical_piece_detection": "user reported magnet-dependent changes; default later corrected to HIGH",
+    "full_64_position_accuracy_verified": false
+  },
+  "orientation": {
+    "row_reverse": 0,
+    "column_reverse": 0,
+    "calibrated": false,
+    "user_observation": "physical lower-left produced MUX000, DIG_OUT8, logical h1",
+    "pending": "verify four corners and all 64 positions; no orientation change inferred from one point"
   },
   "hardware_requirements_pending": [
-    "Pi execution and timing",
-    "actual scan rate and input stability",
-    "end-to-end LED/visual latency",
-    "whole-system power",
-    "ambient/enclosure thermal qualification",
-    "physical geometry and weight",
-    "battery runtime and charging",
-    "BOM and price targets"
+    "Pi 5 deployment and timing",
+    "full 64-position sensor accuracy and physical orientation",
+    "sustained current-release scan timing and input stability",
+    "external LED wiring, waveform, orientation and optical latency",
+    "motor/electromagnet wiring, calibration and physical transport",
+    "whole-system power and thermal measurements",
+    "physical dimensions, mass, battery/charging and cost targets"
   ],
-  "specification_conflict": "264–520 KB search SRAM does not apply to Stockfish in Pi DRAM. The 264 KiB firmware static-RAM guard is a separate control-program budget.",
-  "pull_integration": {
-    "remote_commit": "31c0d249a423386fd5c8324db3e212275981720b",
-    "local_changes_preserved": true,
-    "menu_quit_smoke": "passed",
-    "local_game_smoke": "passed",
-    "normal_startup_checks_hidden": "passed"
+  "schematic_reference": {
+    "file": "hardware/reference/SCBSensorPCBV2.kicad_sch",
+    "sha256": "be1a0f2db70ba42af336d5658868784e01c56d629996266e775fddf176c8ca24",
+    "wiring": "DIG_OUT signal names correspond to GPIO1..8, not J1 contact numbers"
   },
-  "mcu_board": "WeMos LOLIN32 V1.0.0",
-  "mcu_module": "ESP-WROOM-32",
-  "mcu_chip": "esp32",
-  "lolin32_migration": {
-    "transport": "CP2104 USB-UART bridge -> UART0 GPIO1 TX / GPIO3 RX, 115200 8N1",
-    "cpu": "dual-core 240 MHz Xtensa; control on core 1; serial/LED on core 0",
-    "rmt_dma": false,
-    "rmt_buffer_symbols": 128,
-    "flash_size": "4MB",
-    "flash_freq": "40m",
-    "bootloader_address": "0x1000",
-    "release_chip_headers": "classic ESP32 (0)",
-    "release_image_checksums": "passed",
-    "flash_dry_run": "passed; no serial port opened",
-    "uart_open_regressions": "passed: DTR/RTS deasserted before open, startup settle, close on failure",
-    "host_ctest": {
-      "passed": 10,
-      "total": 10
-    },
-    "hardware_executed": false,
-    "wiring_requirements": "GPIO13 external 10k enable pull-up; 3.3 V external comparator pull-ups on all columns, required for input-only GPIO34-39",
-    "onboard_led": "GPIO5 active-low; intentionally unused, not MAGNET output"
-  }
+  "previous_validation": "history/Pre_S2_20261105.json"
 }

@@ -14,7 +14,7 @@ from scb_rules import Game
 
 
 def main():
-    print("电脑软件自检：不连接 Pi / ESP32，不访问串口或网络。", flush=True)
+    print("电脑软件自检：ESP32-S2 逻辑使用模拟 GPIO；不连接 Pi / MCU，不访问串口或网络。", flush=True)
     native_env = os.environ.copy()
     native_env["DYLD_LIBRARY_PATH"] = str(ROOT / "tools" / "mac_test" / "binaries")
     for binary in ["libchess_adapter_tests", "esp32_core_tests"]:
@@ -38,7 +38,9 @@ def main():
         result.update({"rules_integration": "passed", "plies": len(moves), "moves": moves,
                        "final_fen": game.fen(), "test_suites_passed": 10,
                        "test_platform": platform.platform(),
-                       "pi_or_esp32_hardware_tested": False})
+                       "pi_or_esp32_hardware_tested": False,
+                       "mcu_test_target": "ESP32-S2-Saola-1",
+                       "mcu_gpio_backend": "simulated; no physical GPIO or serial port opened"})
     report = ROOT / "tools" / "mac_test" / "latest_result.json"
     report.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("\nPASS：十组测试及真实 Stockfish 对弈验证通过。OpenRouter 对弈和 Coaching 使用模拟响应测试。", flush=True)

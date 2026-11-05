@@ -1,10 +1,10 @@
 # Interface and Validation Documentation
 
-- [PCB connection map](PCB_Connection_Map.md): GPIO numbers, package pins, and the 16-pin ribbon cable.
-- [USB protocol](USB_Protocol.md): requests, responses, board occupancy, and motion limitations.
-- `validation/latest.json`: build and software-validation results after the project reorganization.
-- `validation/history/`: validation snapshots from before the reorganization. Their paths refer to the previous directory structure and should not be used as the current startup configuration.
+- [S2 test guide](ESP32_S2_Test_Guide.md): staged computer-only, USB, sensor, orientation, timing and optional output tests.
+- [PCB connection map](PCB_Connection_Map.md): current S2 GPIO numbers, Sensor PCB V2 J1 contacts and logical mapping.
+- [USB protocol](USB_Protocol.md): commands, synchronized sensor traces, readable terminal output and motion limitations.
+- [Software specification alignment](Specification_Alignment.md): configured targets and measurement boundaries.
+- [Latest validation](validation/latest.json): current build/software checks, separate historical hardware observations and remaining tests.
+- `validation/history/`: preserved older results and wiring targets; do not use them as the current configuration.
 
-Routine Pi and ESP32 instructions are maintained in their respective README files to avoid duplicating documentation.
-
-- [Software specification alignment](Specification_Alignment.md): timing targets, resource defaults, diagnostics, and hardware verification boundaries.
+Routine build/start instructions are in the Pi and ESP32 README files. The current MCU is ESP32-S2-Saola-1. Original Master PCB/S3 references are hardware history, not the current test-controller configuration. Physical sensor orientation remains uncalibrated.
