@@ -29,6 +29,7 @@ static void reply(ScbCore *c, const char *kind, unsigned id, const char *what) {
     emit(c, "%s %u %s", kind, id, what);
 }
 
+/* Release the magnet, disable motor drivers and clear STEP outputs. */
 static void power_off(ScbCore *c) {
     (void)c->io.write(c->io.ctx, SCB_PIN_MAGNET, false);
     (void)c->io.write(c->io.ctx, SCB_PIN_MOTOR_EN, true);
@@ -38,6 +39,7 @@ static void power_off(ScbCore *c) {
     c->magnet_wanted = false;
 }
 
+/* Stop actuators, invalidate position and report the failure. */
 void scb_core_fault(ScbCore *c, const char *reason) {
     bool interrupted = c->moving;
     unsigned id = c->move_id;
@@ -49,12 +51,14 @@ void scb_core_fault(ScbCore *c, const char *reason) {
     emit(c, "FAULT %s", reason);
 }
 
+/* Write the three address bits that select one of eight sensor rows. */
 static bool set_row(ScbCore *c, unsigned row) {
     for (unsigned i = 0; i < 3; ++i)
         if (!c->io.write(c->io.ctx, address[i], (row & (1U << i)) != 0)) return false;
     return true;
 }
 
+/* Initialize safe outputs, sensor polarity, debounce and move-tracking state. */
 bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     if (!c || !io.write || !io.read || !io.pulse || !io.show_leds || !io.emit) return false;
     memset(c, 0, sizeof(*c)); c->io = io; c->active_low = SCB_SENSOR_ACTIVE_LOW != 0;
@@ -76,18 +80,21 @@ bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     return true;
 }
 
+/* Pack 64 logical occupied flags into a mask: bit0=a1, bit63=h8. */
 static uint64_t occupancy_bits(const bool map[64]) {
     uint64_t bits = 0;
     for (unsigned i = 0; i < 64; ++i) if (map[i]) bits |= UINT64_C(1) << i;
     return bits;
 }
 
+/* Send a stable BOARD or a complete pre-debounce RAW occupancy mask. */
 static void board_report(ScbCore *c, bool raw) {
     uint64_t bits = occupancy_bits(raw ? c->raw_frame : c->stable);
     emit(c, "%s %016llX", raw ? "RAW" : "BOARD", (unsigned long long)bits);
     if (!raw) c->sensor_trace_pending = bits != 0;
 }
 
+/* Report captured MUX/input data from the accepted frame; limit automatic traces. */
 static void sensor_trace(ScbCore *c, int64_t now, bool force) {
     if (!c->board_ready || !c->sensor_trace_pending) return;
     if (!force && c->sensor_trace_at &&
@@ -112,6 +119,7 @@ static void sensor_trace(ScbCore *c, int64_t now, bool force) {
     c->sensor_trace_at = now;
 }
 
+/* Read one settled row; after eight rows, debounce and report the complete board. */
 static void scan_tick(ScbCore *c, int64_t now) {
     if (now < c->row_ready_at) return;
     uint8_t inputs = 0;
@@ -176,6 +184,7 @@ static bool integer(const char *s, long lo, long hi, long *v) {
     *v = n; return true;
 }
 
+/* Reject actuator commands unless armed, heartbeat-current and idle. */
 static bool require_armed(ScbCore *c, unsigned id, int64_t now) {
     if (!c->armed || now - c->last_ping >= SCB_LINK_TIMEOUT_US) {
         reply(c, "ERR", id, "NOT_ARMED"); return false;
@@ -184,6 +193,7 @@ static bool require_armed(ScbCore *c, unsigned id, int64_t now) {
     return true;
 }
 
+/* Set a pulse-control target and select whether the magnet carries a piece. */
 static void begin_motion(ScbCore *c, unsigned id, int x, int y, bool carry, int64_t now) {
     bool was_on = c->magnet;
     c->target_x = x; c->target_y = y; c->move_id = id;
@@ -198,6 +208,7 @@ static void begin_motion(ScbCore *c, unsigned id, int x, int y, bool carry, int6
     reply(c, "ACK", id, "MOTION");
 }
 
+/* Dispatch complete commands to status, sensing, LED, motion and stop handlers. */
 static void command(ScbCore *c, char *line, int64_t now) {
     char *args[7]; unsigned n = 0, id = 0; char *save = NULL;
     for (char *t = strtok_r(line, " \t\r", &save); t; t = strtok_r(NULL, " \t\r", &save)) {
@@ -359,6 +370,7 @@ bad_args:
     reply(c, "ERR", id, "COMMAND_OR_ARGS");
 }
 
+/* Assemble UART bytes into command lines; discard malformed or overlong lines. */
 void scb_core_feed(ScbCore *c, const void *bytes, size_t len, int64_t now) {
     /* A late PING must not conceal an already-expired motion watchdog. */
     motion_tick(c, now);
@@ -378,6 +390,7 @@ void scb_core_feed(ScbCore *c, const void *bytes, size_t len, int64_t now) {
     }
 }
 
+/* Check watchdogs and advance X-then-Y pulses; DONE confirms pulses, not piece transport. */
 static void motion_tick(ScbCore *c, int64_t now) {
     if ((c->armed || c->moving || c->magnet) && now - c->last_ping >= SCB_LINK_TIMEOUT_US) {
         scb_core_fault(c, "LINK_TIMEOUT"); return;
@@ -417,6 +430,7 @@ static void motion_tick(ScbCore *c, int64_t now) {
     c->next_step_at = now + SCB_STEP_INTERVAL_US;
 }
 
+/* Advance motion/watchdogs and scanning once per control-task tick. */
 void scb_core_tick(ScbCore *c, int64_t now) {
     motion_tick(c, now);
     scan_tick(c, now);

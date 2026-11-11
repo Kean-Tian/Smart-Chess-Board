@@ -9,6 +9,7 @@ from scb_link import DeviceError
 from coaching import add_coaching_arguments
 
 
+# Show the mode menu and return the selected opponent or coaching mode.
 def select_opponent():
     while True:
         print("\nSmart Chess Board\n1. Local Mode - Play with Stockfish\n2. AI Mode\n0. Quit")
@@ -40,6 +41,7 @@ def select_opponent():
             print("Choose 1, 2, or 0.")
 
 
+# Parse launch options and route to keyboard, physical-board or coaching play.
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Choose Local Mode or OpenRouter AI Mode")
     add_opponent_arguments(parser, default=None)

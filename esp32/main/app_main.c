@@ -49,10 +49,12 @@ static bool write_pin(void *ctx, unsigned pin, bool high) {
     (void)ctx;
     return gpio_set_level((gpio_num_t)pin, high) == ESP_OK;
 }
+/* Read one sensor input; the core chooses which MUX row is active. */
 static bool read_pin(void *ctx, unsigned pin) {
     (void)ctx;
     return gpio_get_level((gpio_num_t)pin) != 0;
 }
+/* Send one STEP pulse to the selected motor driver. */
 static bool pulse_pin(void *ctx, unsigned pin) {
     (void)ctx;
     /* A4988 DIR setup margin, then independent X_STEP or Y_STEP. */
@@ -61,6 +63,7 @@ static bool pulse_pin(void *ctx, unsigned pin) {
     esp_rom_delay_us(SCB_STEP_HIGH_US);
     return gpio_set_level((gpio_num_t)pin, 0) == ESP_OK;
 }
+/* Encode the pixel buffer as GRB pulses and transmit it through RMT. */
 static bool transmit_leds(const ScbLedGrid *grid) {
     size_t n = 0;
     for (unsigned i = 0; i < SCB_LED_COUNT; ++i) {
@@ -83,12 +86,14 @@ static bool transmit_leds(const ScbLedGrid *grid) {
         return false;
     return rmt_tx_wait_all_done(led_channel, 20) == ESP_OK;
 }
+/* Queue the latest LED state without blocking sensor scanning. */
 static bool show_leds(void *ctx, const ScbLedGrid *grid) {
     (void)ctx;
     LedFrame frame = {.grid = *grid, .queued_at = esp_timer_get_time()};
     /* Copy the pixels: the control task may immediately update its own grid. */
     return xQueueOverwrite(led_queue, &frame) == pdTRUE;
 }
+/* Read LED completion statistics and available internal heap. */
 static bool read_stats(void *ctx, ScbPlatformStats *out) {
     (void)ctx;
     portENTER_CRITICAL(&stats_lock);
@@ -98,6 +103,7 @@ static bool read_stats(void *ctx, ScbPlatformStats *out) {
     out->heap_min = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     return true;
 }
+/* Run queued LED transfers and record completion time or failure. */
 static void led_writer(void *unused) {
     (void)unused;
     LedFrame frame;
@@ -118,6 +124,7 @@ static void led_writer(void *unused) {
         }
     }
 }
+/* Queue one complete protocol line for the UART worker. */
 static void emit_frame(void *ctx, const char *line) {
     (void)ctx;
     char frame[SCB_LINE_CAPACITY] = {0};
@@ -127,6 +134,7 @@ static void emit_frame(void *ctx, const char *line) {
     /* Dropping a complete frame under backpressure never splices two lines. */
     (void)xQueueSend(tx_queue, frame, 0);
 }
+/* Send queued reply/event lines through the onboard USB-UART bridge. */
 static void serial_writer(void *unused) {
     (void)unused;
     char frame[SCB_LINE_CAPACITY];
@@ -140,6 +148,7 @@ static void serial_writer(void *unused) {
         }
     }
 }
+/* Set sensor pins as inputs and control pins as outputs; start actuators off. */
 static void configure_gpio(void) {
     const unsigned outs[] = {SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2,
         SCB_PIN_X_STEP, SCB_PIN_X_DIR, SCB_PIN_Y_STEP, SCB_PIN_Y_DIR,
@@ -168,6 +177,7 @@ static void configure_gpio(void) {
      */
     ESP_ERROR_CHECK(gpio_config(&in_config));
 }
+/* Every 1 ms, advance the core and pass incoming UART bytes to its parser. */
 static void control_task(void *unused) {
     (void)unused;
     TickType_t wake = xTaskGetTickCount();
@@ -189,6 +199,7 @@ static void control_task(void *unused) {
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(SCB_CONTROL_TICK_MS));
     }
 }
+/* Firmware entry: initialize GPIO, UART, RMT, core state and worker tasks. */
 void app_main(void) {
     configure_gpio();
     esp_log_level_set("*", ESP_LOG_NONE); /* Do not mix logs into the application protocol. */

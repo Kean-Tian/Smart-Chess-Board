@@ -44,6 +44,7 @@ def resolve_engine(executable=None):
 
 
 class Stockfish:
+    # Launch the local Stockfish process, complete UCI setup and configure engine options.
     def __init__(self, executable=None, threads=DEFAULT_ENGINE_THREADS,
                  hash_mb=DEFAULT_ENGINE_HASH_MB, skill=10, startup_timeout=15):
         if not 1 <= threads <= 4 or not 16 <= hash_mb <= 512 or not 0 <= skill <= 20:
@@ -79,6 +80,7 @@ class Stockfish:
             self.close()
             raise
 
+    # Read engine output in the background so searches do not block pipe reception.
     def _read_output(self):
         try:
             for line in self.process.stdout:
@@ -86,6 +88,7 @@ class Stockfish:
         finally:
             self._lines.put(None)
 
+    # Write one UCI command to the local engine process.
     def _send(self, command):
         if self._closed or self.process.poll() is not None:
             raise EngineError("Stockfish process is not running")
@@ -125,6 +128,7 @@ class Stockfish:
             self._send("ucinewgame")
             self._ready()
 
+    # Send position/go through UCI, enforce the response budget and validate bestmove.
     def best_move(self, fen, legal_moves, movetime_ms=DEFAULT_MOVE_TIME_MS, history=None):
         # Short searches remain available to explicit diagnostic/test callers.
         if not isinstance(movetime_ms, int) or not 50 <= movetime_ms <= MAX_ENGINE_TURN_MS:
@@ -174,6 +178,7 @@ class Stockfish:
                 raise EngineError(f"Stockfish returned a move rejected by the rules layer: {move}")
             return move
 
+    # Adapt the Game position, legal moves and history to best_move().
     def choose(self, game, movetime_ms=DEFAULT_MOVE_TIME_MS):
         return self.best_move(game.fen(), game.legal_moves(), movetime_ms,
                               getattr(game, "move_history", None))

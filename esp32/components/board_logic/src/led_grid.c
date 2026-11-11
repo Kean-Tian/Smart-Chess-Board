@@ -9,6 +9,7 @@ void scb_led_grid_init(ScbLedGrid *grid) {
     grid->serpentine = true;
 }
 
+/* Map a logical square to the physical serpentine LED index, including orientation flips. */
 int scb_led_index(const ScbLedGrid *grid, unsigned int square) {
     if (grid == NULL || square >= SCB_LED_COUNT) {
         errno = EINVAL;
@@ -22,6 +23,7 @@ int scb_led_index(const ScbLedGrid *grid, unsigned int square) {
     return (int)(row * 8U + column);
 }
 
+/* Update one square in the pixel buffer; the platform driver sends it later. */
 int scb_led_set_square(ScbLedGrid *grid, unsigned int square, ScbRgb color) {
     int led = scb_led_index(grid, square);
     if (led < 0) return -1;
@@ -29,10 +31,12 @@ int scb_led_set_square(ScbLedGrid *grid, unsigned int square, ScbRgb color) {
     return 0;
 }
 
+/* Clear the pixel buffer; transmission is a separate operation. */
 void scb_led_clear(ScbLedGrid *grid) {
     if (grid != NULL) memset(grid->pixels, 0, sizeof(grid->pixels));
 }
 
+/* Color a legal move blue/green or an illegal move red. */
 int scb_led_mark_move(ScbLedGrid *grid, unsigned int from,
                       unsigned int to, bool legal) {
     const ScbRgb green = {0U, 20U, 0U};

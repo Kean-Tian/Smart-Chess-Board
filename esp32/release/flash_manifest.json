@@ -25,25 +25,25 @@
       "offset": "0x10000",
       "file": "firmware.bin",
       "bytes": 195680,
-      "sha256": "606df43814100505b274499f39f5750c813032b478dc917bb86a950b62fd95f5"
+      "sha256": "948c906906d92d4367a25cc3e6421865889774b9ab6e5226c798a29cf85676c0"
     }
   ],
-  "build_date": "2026-11-05",
+  "build_date": "2026-11-11",
   "static_internal_ram_bytes": 74080,
   "static_ram_limit_bytes": 270336,
   "source_sha256": {
     "CMakeLists.txt": "1eb0184fbbc413d03c712ac45e3426af9faf771eae8f825864a955026ba511ca",
     "sdkconfig.defaults": "b4825da969cb1cdd9fc1680a3ad01b45d6ea0a80baca0dcf3a61ba348e680250",
     "partitions.csv": "166a0614fdfef6818b84f1dec987bbfacb4ac80f036a8a3aab5be934b9f726f4",
-    "main/app_main.c": "685010cacc2fe8ccefb3001e014a4b474c94be2fbd901644472552c6c95c1239",
-    "main/board_pins.h": "97add3330e9a2913d06fe778c07350714938245c2ef35d21b9ba3834046c4292",
-    "main/scb_core.c": "c5161fe5a2a30c7db7f7cdc297a792e254034549f6855ca03a7291960518dc9e",
+    "main/app_main.c": "67f765ffa3464544fb1be1acc0dcf92cdefd17e0db19560871b41eedfa67290f",
+    "main/board_pins.h": "dc81cc97ac6f4b3605bd68db37332e962939da7a643bb3c8d3c5336299a461a8",
+    "main/scb_core.c": "c459e5937f61166613742eefb8b3dddc8425243808343c30e44417e7bb4cf3e1",
     "main/scb_core.h": "136e6b84c07a0d1721c18de47616a780fe098ec4003508c55653b2d7942d9bac",
     "main/CMakeLists.txt": "9b7d02e14d70482919e7880278effb51a98053274e26c755586778add4d09d45",
     "components/board_logic/CMakeLists.txt": "f200bbd6bc409437f07c9bd8a642b5d69ba898643c34cf2f906739cc2068c276",
     "components/board_logic/include/scb/led_grid.h": "5b8c9cbf69c94036027f33370b82395cc66e1fb72ecc0e138caa47498ecbbbb6",
     "components/board_logic/include/scb/sensor_matrix.h": "84fd6be1d81c14f515abfb3adda7aaec4dcaaee154f5870fac95bfd821712e92",
-    "components/board_logic/src/led_grid.c": "93d7e6ab9203d4789f49a088014de97f35eca34558426169387399f816556123",
-    "components/board_logic/src/sensor_matrix.c": "c0898beb1bb76061b1a1fa49d5062440768b01f6f4cf912990d229253cd7401d"
+    "components/board_logic/src/led_grid.c": "e4730cf440a27d2a0df91f2b279eb70679190ba7906539a888a780225001a01e",
+    "components/board_logic/src/sensor_matrix.c": "058d1a51ebab07597427948e1d5867f93eb4ee0b2cb056b9fdce0654a19d6ec9"
   }
 }

@@ -9,6 +9,7 @@ from openrouter_engine import OpenRouterError
 from opponents import add_opponent_arguments, create_opponent
 
 
+# Alternate human keyboard input and computer moves using the same rules validation.
 def play_game(game, engine, computer, movetime_ms):
     """Both providers use the same authoritative rules and turn handling."""
     while True:
@@ -47,6 +48,7 @@ def play_game(game, engine, computer, movetime_ms):
                 print("Illegal move. Position unchanged.")
 
 
+# Create the selected opponent and rules game, then start keyboard play.
 def run(args):
     computer = args.computer[0]
     with create_opponent(args) as engine, Game() as game:

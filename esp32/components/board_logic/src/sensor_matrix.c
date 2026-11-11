@@ -8,6 +8,7 @@ static void set_invalid_argument(void) {
     errno = EINVAL;
 }
 
+/* Set how many matching complete-board observations confirm a stable state. */
 int scb_debouncer_initialize(ScbDebouncer *debouncer,
                              unsigned int required_reads) {
     if (debouncer == NULL || required_reads == 0U) {
@@ -19,6 +20,7 @@ int scb_debouncer_initialize(ScbDebouncer *debouncer,
     return 0;
 }
 
+/* Accept a new stable board only after the required consecutive matching frames. */
 int scb_debouncer_update(ScbDebouncer *debouncer,
                          const bool snapshot[SCB_BOARD_SQUARES],
                          bool stable_snapshot[SCB_BOARD_SQUARES]) {
@@ -48,6 +50,7 @@ int scb_debouncer_update(ScbDebouncer *debouncer,
     return 1;
 }
 
+/* Convert a logical square name such as e2 into an index from 0 to 63. */
 int scb_square_index(const char *name) {
     if (name == NULL || name[0] < 'a' || name[0] > 'h' ||
         name[1] < '1' || name[1] > '8' || name[2] != '\0') {
@@ -57,6 +60,7 @@ int scb_square_index(const char *name) {
     return (name[1] - '1') * 8 + (name[0] - 'a');
 }
 
+/* Convert an index from 0 to 63 back into a logical chess square name. */
 void scb_square_name(unsigned int index, char name[3]) {
     if (name == NULL) return;
     if (index >= SCB_BOARD_SQUARES) {
@@ -69,6 +73,7 @@ void scb_square_name(unsigned int index, char name[3]) {
     name[2] = '\0';
 }
 
+/* Reset the previous-board baseline and pending piece lifts. */
 void scb_move_tracker_initialize(ScbMoveTracker *tracker) {
     if (tracker != NULL) memset(tracker, 0, sizeof(*tracker));
 }
@@ -128,6 +133,7 @@ static int complete_move(ScbMoveTracker *tracker, unsigned int source,
     return 0;
 }
 
+/* Compare stable boards to infer lift/place/move candidates; chess legality is checked on the Pi. */
 int scb_move_tracker_process(ScbMoveTracker *tracker,
                              const bool snapshot[SCB_BOARD_SQUARES],
                              ScbBoardEvent *event) {

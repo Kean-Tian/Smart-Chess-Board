@@ -7,11 +7,14 @@ import subprocess
 import time
 import os
 import select
+import contextlib
+import io
 from unittest.mock import Mock, patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
-from scb_link import ScbLink, DeviceError, parse_frame, format_frame
+from scb_link import (ScbLink, DeviceError, Frame, parse_frame, format_frame,
+                      format_scan_timing, print_scan_report)
 
 SENSOR_LINE = (b"SENSOR frame=2 mux=000 A0=36:0 A1=37:0 A2=38:0 "
                b"inputs=00000001 occupy=0000000000000080 polarity=HIGH\n")
@@ -34,6 +37,11 @@ class FakeSerial:
         elif command.startswith(b"MOVE"):
             self.incoming.put(b"ACK " + request_id + b" MOTION\n")
             self.incoming.put(b"DONE " + request_id + b" MOTION\n")
+        elif command == b"TIMING":
+            # Deliberately not 10 ms: the terminal must show the MCU observation,
+            # not a configured target or a time measured around the host call.
+            self.incoming.put(b"TIMING " + request_id +
+                              b" frames=30 frame_us=12345 max_us=18000 misses=2 debounce_us=9000\n")
         else:
             # Exercise partial-frame input and unsolicited occupancy.
             self.incoming.put(b"BOARD 0000000000000080\n" + SENSOR_LINE + b"ACK ")
@@ -66,19 +74,19 @@ class LinkTests(unittest.TestCase):
                          "INPUTS(DIG_OUT1..8)=00000001 | "
                          "OCCUPY=h1 | frame=2")
         malformed = parse_frame("SENSOR incomplete")
-        self.assertEqual(format_frame(malformed), str(malformed))
+        self.assertEqual(format_frame(malformed), "Message type=SENSOR | Payload=incomplete")
         board = parse_frame("BOARD 0000000000000080")
         self.assertEqual(format_frame(board), "BOARD | OCCUPY=h1")
         for payload, expected in [
-                ("0000000000000000", "无棋子"),
+                ("0000000000000000", "Empty"),
                 ("0000000000000001", "a1"),
                 ("8000000000000081", "a1, h1, h8"),
-                ("FFFFFFFFFFFFFFFF", "全部64格")]:
+                ("FFFFFFFFFFFFFFFF", "All 64 squares")]:
             with self.subTest(payload=payload):
                 self.assertEqual(format_frame(parse_frame(f"BOARD {payload}")),
                                  f"BOARD | OCCUPY={expected}")
                 self.assertEqual(format_frame(parse_frame(f"RAW {payload}")),
-                                 f"RAW | OCCUPY={expected}")
+                                 f"RAW (before debounce) | OCCUPY={expected}")
 
     def test_live_sensor_updates_do_not_wait_for_keyboard_input(self):
         root = Path(__file__).resolve().parents[2]
@@ -116,7 +124,8 @@ runpy.run_path(str(root / "pi5/app/scb_link.py"), run_name="__main__")
                     if not chunk:
                         break
                     output += chunk.decode("utf-8")
-            tail, errors = process.communicate("quit\n", timeout=5)
+            # Exercise a user-entered SCAN as well as the automatic startup scan.
+            tail, errors = process.communicate("SCAN\nquit\n", timeout=5)
             output += tail
         finally:
             if process.poll() is None:
@@ -126,6 +135,40 @@ runpy.run_path(str(root / "pi5/app/scb_link.py"), run_name="__main__")
         self.assertIn("MUX(A2,A1,A0)=001", output, errors)
         self.assertIn("[GPIO36,37,38=100]", output)
         self.assertIn("OCCUPY=a2 | frame=777", output)
+        self.assertEqual(output.count("Last full-board period=12.345 ms"), 2)
+        self.assertIn("Maximum period=18.000 ms", output)
+        self.assertIn("Debounce confirmation=9.000 ms", output)
+        self.assertRegex(output, r"SCAN round trip=\d+\.\d{3} ms")
+        self.assertIn("Scan overruns=2", output)
+
+    def test_scan_round_trip_excludes_separate_timing_request(self):
+        clock = [1.0]
+
+        def reply(command):
+            if command == 'SCAN':
+                clock[0] += 0.012
+                return Frame('ACK', 5, 'SCAN')
+            clock[0] += 0.250
+            return Frame('TIMING', 6,
+                         'frames=20 frame_us=10000 max_us=12000 misses=0 debounce_us=10000')
+
+        with patch('scb_link.time.monotonic', side_effect=lambda: clock[0]), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            print_scan_report(types.SimpleNamespace(request=reply))
+        self.assertIn('SCAN round trip=12.000 ms', output.getvalue())
+        self.assertNotIn('262.000 ms', output.getvalue())
+        self.assertIn('Last full-board period=10.000 ms', output.getvalue())
+
+    def test_scan_statistics_unavailable_does_not_hide_success(self):
+        link = Mock()
+        link.request.side_effect = [Frame('ACK', 5, 'SCAN'), DeviceError('UNAVAILABLE')]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            print_scan_report(link)
+        self.assertIn("ACK | Request ID=5 | Command=SCAN", output.getvalue())
+        self.assertIn('Scan statistics unavailable: UNAVAILABLE', output.getvalue())
+        self.assertNotIn('Last full-board period=', output.getvalue())
+        initial = Frame('TIMING', 6, 'frame_us=0 max_us=0 misses=0 debounce_us=0')
+        self.assertIn('Last full-board period=not recorded yet', format_scan_timing(initial, 1.0))
 
     def test_connection_motion_and_error(self):
         fake = FakeSerial()

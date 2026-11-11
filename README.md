@@ -22,6 +22,7 @@ git lfs pull
 | View PCB schematics and the KiCad project | [hardware/](hardware/README.md) |
 | Check GPIO and ribbon-cable mappings | [Connection map](docs/PCB_Connection_Map.md) |
 | Check Pi–MCU commands and messages | [USB protocol](docs/USB_Protocol.md) |
+| Run the Pi 5 touchscreen UI and SQLite player manager | [Touch UI](pi5/ui/README.md) |
 | Test the S2 USB connection, sensors and optional outputs | [S2 test guide](docs/ESP32_S2_Test_Guide.md) |
 
 ## Directory Structure

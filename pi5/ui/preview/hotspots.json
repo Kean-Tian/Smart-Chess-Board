@@ -1,0 +1,269 @@
+{
+  "width": 720,
+  "height": 1280,
+  "screens": {
+    "home": [
+      {
+        "id": "new-game",
+        "target": "setup",
+        "x": 32,
+        "y": 280,
+        "w": 320,
+        "h": 244,
+        "disabled": false
+      },
+      {
+        "id": "players",
+        "target": "profiles",
+        "x": 368,
+        "y": 280,
+        "w": 320,
+        "h": 244,
+        "disabled": false
+      },
+      {
+        "id": "history",
+        "target": "history",
+        "x": 32,
+        "y": 544,
+        "w": 320,
+        "h": 244,
+        "disabled": false
+      },
+      {
+        "id": "diagnostics",
+        "target": "diagnostics",
+        "x": 368,
+        "y": 544,
+        "w": 320,
+        "h": 244,
+        "disabled": false
+      },
+      {
+        "id": "continue-game",
+        "target": "game",
+        "x": 32,
+        "y": 1120,
+        "w": 656,
+        "h": 88,
+        "disabled": true
+      }
+    ],
+    "setup": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "choose-white",
+        "target": "profiles",
+        "x": 32,
+        "y": 504,
+        "w": 320,
+        "h": 144,
+        "disabled": false
+      },
+      {
+        "id": "choose-black",
+        "target": "profiles",
+        "x": 368,
+        "y": 504,
+        "w": 320,
+        "h": 144,
+        "disabled": false
+      },
+      {
+        "id": "prepare",
+        "target": "board-setup",
+        "x": 32,
+        "y": 1128,
+        "w": 656,
+        "h": 96,
+        "disabled": false
+      }
+    ],
+    "profiles": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "create-player",
+        "target": "player-editor",
+        "x": 32,
+        "y": 892,
+        "w": 656,
+        "h": 84,
+        "disabled": false
+      },
+      {
+        "id": "rename-player",
+        "target": "player-editor",
+        "x": 32,
+        "y": 996,
+        "w": 320,
+        "h": 80,
+        "disabled": true
+      },
+      {
+        "id": "use-player",
+        "target": "setup",
+        "x": 32,
+        "y": 1112,
+        "w": 656,
+        "h": 88,
+        "disabled": true
+      }
+    ],
+    "history": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      }
+    ],
+    "diagnostics": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      }
+    ],
+    "player-editor": [
+      {
+        "id": "back",
+        "target": "profiles",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "cancel-editor",
+        "target": "profiles",
+        "x": 368,
+        "y": 1140,
+        "w": 320,
+        "h": 88,
+        "disabled": false
+      }
+    ],
+    "board-setup": [
+      {
+        "id": "back",
+        "target": "setup",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "board-diagnostics",
+        "target": "diagnostics",
+        "x": 368,
+        "y": 988,
+        "w": 320,
+        "h": 72,
+        "disabled": false
+      },
+      {
+        "id": "start-game",
+        "target": "game",
+        "x": 32,
+        "y": 1160,
+        "w": 656,
+        "h": 64,
+        "disabled": true
+      }
+    ],
+    "game": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "confirm-move",
+        "target": "move-editor",
+        "x": 32,
+        "y": 1040,
+        "w": 656,
+        "h": 80,
+        "disabled": true
+      },
+      {
+        "id": "view-position",
+        "target": "review",
+        "x": 32,
+        "y": 1140,
+        "w": 656,
+        "h": 80,
+        "disabled": true
+      }
+    ],
+    "review": [
+      {
+        "id": "back",
+        "target": "history",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      }
+    ],
+    "move-editor": [
+      {
+        "id": "back",
+        "target": "game",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "save-move",
+        "target": "game",
+        "x": 32,
+        "y": 1140,
+        "w": 320,
+        "h": 88,
+        "disabled": false
+      },
+      {
+        "id": "cancel-move",
+        "target": "game",
+        "x": 368,
+        "y": 1140,
+        "w": 320,
+        "h": 88,
+        "disabled": false
+      }
+    ]
+  }
+}

@@ -10,7 +10,7 @@ This guide applies to the **main S2 full-scan firmware**, current GPIO36/37/38 M
 | Portable logic and Python interfaces | Automated simulated-GPIO/serial tests; see latest validation record | Does not establish electrical operation |
 | Computer-to-S2 USB-UART | Earlier successful PING, STATUS, SCAN, RAW and TIMING session | Repeat after flashing; Pi 5 execution not verified |
 | Physical sensor response | User observed magnet-dependent BOARD/EVENT changes and readable SENSOR output | Verify all 64 positions and repeatability |
-| Sensor polarity | User reported magnet placement when old LOW interpretation said LIFT; default changed to HIGH | Confirm empty/occupied levels across every row |
+| Sensor polarity | Firmware defaults to HIGH; latest debugging found only 3.3 V/GND connected and no magnet response | Supply the missing comparator 5 V rail, then recheck polarity and every row |
 | Physical coordinates | Logical mapping and V2 schematic networks traced | Not calibrated: physical lower-left displayed logical h1 |
 | Scan timing | Earlier session reported last interval 10000 us, maximum 12000 us, zero misses | Sustained tests with current firmware, connected PCB and other loads |
 | External LEDs | Driver code and simulated mappings exist | Actual waveform, order and optical latency |
@@ -77,7 +77,7 @@ If PING times out, check the actual port, close competing monitors, confirm the 
 
 ## 4. Connect and Check the Sensor PCB
 
-Disconnect power while wiring, then follow the [V2 contact table](PCB_Connection_Map.md). Use a common ground and the intended sensor supply. Connect by DIG_OUT name: DIG_OUT1→GPIO1 through DIG_OUT8→GPIO8. J1 contacts 1..8 are not in that numerical signal order.
+Disconnect power while wiring, then follow the [V2 contact table](PCB_Connection_Map.md). Use a common ground and both required supply rails: J1 contact14 = +3V3 for row-selection logic; contact16 = +5V for LM339 U3/U4 (and the LED/buffer rail); contacts10/12 = GND. The latest no-response fault had only 3.3 V/GND connected. Correct that missing supply before deciding polarity. Do not apply 5 V to GPIO/DIG_OUT signal inputs. Connect by DIG_OUT name: DIG_OUT1→GPIO1 through DIG_OUT8→GPIO8. J1 contacts 1..8 are not in that numerical signal order.
 
 Use MUX_IN1/A0→GPIO36, MUX_IN2/A1→GPIO37, MUX_IN3/A2→GPIO38. All sensor inputs remain inputs; do not configure them as outputs to force a LOW. Power the board and start the terminal. With magnets removed, check the stable board. Place a magnet on one sensor, hold it still until debounce completes, remove it, and repeat.
 

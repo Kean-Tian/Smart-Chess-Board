@@ -26,7 +26,7 @@ Use printed **GPIO numbers**, not connector positions or module pad numbers.
 | Shared motor enable | 13 | Active-low output; external 10k pull-up to 3.3 V |
 | UART0 TX / RX | 43 / 44 | Reserved for onboard USB-UART bridge |
 
-GPIO1..8 remain inputs with internal pull-up/down disabled. Use the sensor board's 3.3 V comparator pull-ups; never drive these inputs to force a reading. The current measured polarity is HIGH when a magnet is present.
+GPIO1..8 remain inputs with internal pull-up/down disabled. Use the sensor board's 3.3 V comparator pull-ups; never drive these inputs to force a reading. The firmware currently defaults to HIGH when occupied. Recheck polarity only after both PCB supply rails are present; the latest fault investigation found that only 3.3 V and GND had been connected.
 
 ## Sensor PCB V2 J1 Contacts
 
@@ -49,7 +49,13 @@ The user confirmed wiring **by DIG_OUT signal name**, not J1 contact number. The
 | 13 | MUX_IN2 / A1 | GPIO37 |
 | 14 | +3V3 | Verified sensor logic supply |
 | 15 | MUX_IN3 / A2 | GPIO38 |
-| 16 | +5V | Verified external LED/buffer supply |
+| 16 | +5V | Required supply for LM339 U3/U4 and the external LED/buffer rail |
+
+## Required Sensor PCB Supply Rails
+
+Sensor PCB V2 requires both rails: J1 contact14 (+3V3) powers the 74HC138 decoder and 74HC04 row-selection inverters; contact16 (+5V) powers LM339 comparators U3/U4 at their V+ pin3. J1 contacts10/12 are GND. A USB connection to the MCU does not automatically supply these PCB contacts.
+
+In the latest troubleshooting session, only 3.3 V and GND were connected. The board displayed all occupied with HIGH polarity, then empty with LOW polarity but no magnet response. This does not validate either polarity: the missing comparator supply must be corrected before testing occupancy. Connect the intended +5V supply to the PCB power contact with common ground, not to GPIO1..8 or DIG_OUT signals. Keep the two supply rails separate. Verify physical connector numbering before powering up.
 
 ## Decoder and Logical Coordinate Mapping
 

@@ -17,6 +17,7 @@ class Frame:
     payload: str
 
 
+# Decode one MCU protocol line into a reply or an unsolicited event.
 def parse_frame(line: str) -> Frame:
     parts = line.strip().split(maxsplit=2)
     if not parts:
@@ -36,24 +37,27 @@ def parse_frame(line: str) -> Frame:
     raise ValueError("Unknown frame")
 
 
+# Convert the wire mask to readable logical squares; this does not calibrate physical orientation.
 def format_occupancy(payload: str) -> str:
     if len(payload) != 16 or any(ch not in "0123456789abcdefABCDEF" for ch in payload):
         raise ValueError("Invalid occupancy mask")
     mask = int(payload, 16)
     if mask == 0:
-        return "无棋子"
+        return "Empty"
     if mask == (1 << 64) - 1:
-        return "全部64格"
+        return "All 64 squares"
     return ", ".join(f"{chr(ord('a') + square % 8)}{square // 8 + 1}"
                      for square in range(64) if mask & (1 << square))
 
 
+# Format replies and sensor events for the terminal without changing the wire protocol.
 def format_frame(frame: Frame) -> str:
     if frame.kind in {"BOARD", "RAW"}:
         try:
-            return f"{frame.kind} | OCCUPY={format_occupancy(frame.payload)}"
+            label = "BOARD" if frame.kind == "BOARD" else "RAW (before debounce)"
+            return f"{label} | OCCUPY={format_occupancy(frame.payload)}"
         except ValueError:
-            return str(frame)
+            pass
     if frame.kind == "SENSOR":
         try:
             fields = dict(token.split("=", 1) for token in frame.payload.split())
@@ -65,7 +69,57 @@ def format_frame(frame: Frame) -> str:
                     f"OCCUPY={format_occupancy(fields['occupy'])} | frame={fields['frame']}")
         except (ValueError, KeyError):
             pass
-    return str(frame)
+    if frame.kind == "ACK":
+        return f"ACK | Request ID={frame.request_id} | Command={frame.payload}"
+    if frame.kind == "DONE":
+        return f"Motion pulses completed | Request ID={frame.request_id} | Details={frame.payload}"
+    if frame.kind in {"STATUS", "TIMING", "PLATFORM"}:
+        return f"{frame.kind} | Request ID={frame.request_id} | {frame.payload}"
+    if frame.kind == "EVENT":
+        return f"Board event | {frame.payload}"
+    if frame.kind == "HELLO":
+        return f"Board startup | Board ID and protocol version={frame.payload}"
+    if frame.kind in {"ERR", "FAULT"}:
+        label = "Command error" if frame.kind == "ERR" else "Device fault"
+        return f"{label} | Reason code={frame.payload}"
+    return f"Message type={frame.kind} | Payload={frame.payload}"
+
+
+def format_scan_timing(frame: Frame, reply_ms: float) -> str:
+    """Format MCU frame statistics separately from the host SCAN round trip."""
+    if frame.kind != "TIMING":
+        raise ValueError("Expected a TIMING reply")
+    fields = dict(token.split("=", 1) for token in frame.payload.split())
+    values = {name: int(fields[name])
+              for name in ("frame_us", "max_us", "debounce_us", "misses")}
+    if any(value < 0 for value in values.values()):
+        raise ValueError("Negative timing counter")
+
+    def milliseconds(name):
+        return f"{values[name] / 1000:.3f} ms" if values[name] else "not recorded yet"
+
+    return (f"SCAN timing | Last full-board period={milliseconds('frame_us')} | "
+            f"Maximum period={milliseconds('max_us')}\n"
+            f"Latency | Debounce confirmation={milliseconds('debounce_us')} | "
+            f"SCAN round trip={reply_ms:.3f} ms | Scan overruns={values['misses']}")
+
+
+def print_scan_report(link):
+    """Query the cached board, then query existing MCU timing diagnostics.
+
+    The host duration ends at SCAN ACK and excludes the separate TIMING request.
+    It includes OS/USB/UART/MCU queueing; it is not physical detection latency.
+    """
+    started = time.monotonic()
+    reply = link.request("SCAN")
+    reply_ms = (time.monotonic() - started) * 1000
+    print(format_frame(reply), flush=True)
+    try:
+        timing = link.request("TIMING")
+        print(format_scan_timing(timing, reply_ms), flush=True)
+    except (DeviceError, TimeoutError, ValueError, KeyError) as exc:
+        # A failed timing query must not replace an already successful SCAN.
+        print(f"SCAN round trip={reply_ms:.3f} ms | Scan statistics unavailable: {exc}", flush=True)
 
 
 class DeviceError(RuntimeError):
@@ -79,6 +133,7 @@ class ScbLink:
     A heartbeat maintains the MCU watchdog, but never arms the motors itself.
     """
 
+    # Start serial reception, check PING, then start the background heartbeat.
     def __init__(self, serial_port):
         self.serial = serial_port
         self.events = queue.Queue(maxsize=128)
@@ -100,11 +155,14 @@ class ScbLink:
         self._heartbeat.start()
 
     @classmethod
-    def open(cls, port="/dev/ttyUSB0"):
+    # Open the USB-UART port at 115200 baud and allow reset transients to settle.
+    def open(cls, port="/dev/ttyUSB0", *, exclusive=False):
         import serial  # pyserial is required only for a real connection.
         # Saola USB-UART DTR/RTS control EN/GPIO0. Set inactive states before
         # opening; allow any driver-generated reset transient to settle.
         device = serial.Serial(baudrate=115200, timeout=0.1, write_timeout=1)
+        if exclusive:
+            device.exclusive = True
         device.dtr = False
         device.rts = False
         device.port = port
@@ -117,6 +175,7 @@ class ScbLink:
             device.close()
             raise
 
+    # Send one ASCII command line with a request ID; serialize concurrent writes.
     def _write(self, command, request_id):
         if not command or any(c in command for c in "\r\n\x00"):
             raise ValueError("Command must be one ASCII line")
@@ -137,13 +196,17 @@ class ScbLink:
     def _fire(self, command):
         self._write(command, self._next_id())
 
+    # Reassemble serial lines, match replies by ID and queue asynchronous board events.
     def _read_loop(self):
         # Serial timeouts may split lines. Preserve fragments until newline.
         fragment = bytearray()
         discard = False
         try:
             while not self._stop.is_set():
-                chunk = self.serial.read(256)
+                # Block for one byte, then drain only bytes already buffered. Small
+                # BOARD/reply lines must not wait for a 256-byte read to time out.
+                waiting = getattr(self.serial, "in_waiting", 0)
+                chunk = self.serial.read(min(256, max(1, waiting)))
                 for byte in chunk:
                     if byte != 10:
                         if not discard:
@@ -184,6 +247,7 @@ class ScbLink:
                     for pending in self._pending.values():
                         pending.put(Frame("ERR", None, "DISCONNECTED"))
 
+    # Send PING every 0.5 seconds so the MCU can detect a lost control link.
     def _heartbeat_loop(self):
         while not self._stop.wait(0.5):
             try:
@@ -192,6 +256,7 @@ class ScbLink:
                 self._failure = exc
                 return  # MCU independently disarms after its heartbeat timeout.
 
+    # Wait for this command reply; on timeout send STOP without replaying motion.
     def request(self, command, timeout=2.0, wait_done=False):
         request_id = self._next_id()
         pending = queue.Queue()
@@ -227,6 +292,7 @@ class ScbLink:
         """Bench-level X-then-Y transport. DONE confirms pulses, not physical success."""
         return self.request(f"MOVE {source} {destination}", timeout=timeout, wait_done=True)
 
+    # Send STOP, finish the background workers and release the serial port.
     def close(self):
         if self._stop.is_set():
             return
@@ -250,13 +316,13 @@ class ScbLink:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Smart Chess Board USB terminal")
-    parser.add_argument("--port", default="/dev/ttyUSB0")
+    parser.add_argument("--port", default="/dev/ttyUSB0", help="Actual serial port of the development board")
     args = parser.parse_args()
     with ScbLink.open(args.port) as link:
-        print("Connected. Outputs start DISARMED. Enter STATUS, SCAN, INPUTS, or quit.")
+        print("Connected. Enter STATUS, SCAN, RAW, INPUTS, or quit.")
         print("Board and occupied-row sensor updates appear automatically.")
         try:
-            print(format_frame(link.request("SCAN")))
+            print_scan_report(link)
         except (DeviceError, TimeoutError) as exc:
             print(exc)
         print("SCB > ", end="", flush=True)
@@ -280,9 +346,12 @@ if __name__ == "__main__":
                 print("SCB > ", end="", flush=True)
                 continue
             try:
-                is_motion = command.split()[0] in {"MOVE", "GOTO", "JOG"}
-                print(format_frame(link.request(command, timeout=30 if is_motion else 2,
-                                               wait_done=is_motion)))
+                if command == "SCAN":
+                    print_scan_report(link)
+                else:
+                    is_motion = command.split()[0] in {"MOVE", "GOTO", "JOG"}
+                    print(format_frame(link.request(command, timeout=30 if is_motion else 2,
+                                                   wait_done=is_motion)))
             except (DeviceError, TimeoutError, ValueError) as exc:
                 print(exc)
             print("SCB > ", end="", flush=True)

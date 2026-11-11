@@ -56,6 +56,7 @@ void scb_rules_destroy(ScbRulesGame *game) {
     delete game;
 }
 
+/* Expose libchess legal-move validation through the C API used by Python/C callers. */
 bool scb_rules_is_legal_move(const ScbRulesGame *game, const char *uci) {
     if (game == nullptr || uci == nullptr) return false;
     try {
@@ -67,6 +68,7 @@ bool scb_rules_is_legal_move(const ScbRulesGame *game, const char *uci) {
     }
 }
 
+/* Parse a legal UCI move and apply it to the native logical position. */
 bool scb_rules_play_move(ScbRulesGame *game, const char *uci) {
     if (game == nullptr || uci == nullptr) return false;
     try {
@@ -125,6 +127,7 @@ size_t scb_rules_board_text(const ScbRulesGame *game, char *output, size_t capac
     return copy_text(text, output, capacity);
 }
 
+/* Export libchess legal moves as UCI text, normalizing castling notation. */
 size_t scb_rules_legal_moves(const ScbRulesGame *game, char *output, size_t capacity) {
     if (game == nullptr) return 0;
 

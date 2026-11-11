@@ -3,6 +3,10 @@
 This directory contains all Pi-side runtime code and dependencies and can be copied to the Pi 5 on its own.
 Use **64-bit Raspberry Pi OS Bookworm or later**.
 
+## Touchscreen UI Design Prototype
+
+The [portrait LVGL interface](ui/README.md) targets Raspberry Pi 5 and the official **5-inch Touch Display 2 (720 x 1280, DSI)**. Run `sh pi5/ui/setup.sh`, then `sh pi5/start.sh ui` in a Pi desktop session. A private local service connects USB sensing, authoritative chess rules, monotonic clocks, local Stockfish and SQLite player/game storage. The UI supports PvP, PvC, local coaching, real board setup checks, pause/resume, saved history and read-only replay. Computer moves are executed manually on the physical board; this UI never arms motors. The [offline layout gallery](ui/preview/index.html) has no sample game or embedded database.
+
 ## Run
 
 On the Pi, change to this directory:
