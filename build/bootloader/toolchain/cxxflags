@@ -1,6 +1,0 @@
-"-specs=C:/Users/Ronny/OneDrive/Documents/Purdue/Fall 2026/ECE49022/SCB/build/bootloader/specs/picolibc.specs"
--mlongcalls
--fno-builtin-memcpy
--fno-builtin-memset
--fno-builtin-bzero
--fno-rtti
