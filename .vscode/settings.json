@@ -1,0 +1,14 @@
+{
+    "idf.currentSetup": "C:\\Users\\Ronny\\OneDrive\\Documents\\ESP-IDF\\.espressif\\v6.1\\esp-idf",
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32s2"
+    },
+    "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+    "clangd.arguments": [
+      "--background-index",
+      "--query-driver=**",
+      "--compile-commands-dir=c:\\Users\\Ronny\\OneDrive\\Documents\\Purdue\\Fall 2026\\ECE49022\\SCB\\build"
+    ],
+    "idf.port": "COM3",
+    "idf.flashType": "UART"
+}
