@@ -11,3 +11,11 @@ ${CC:-cc} -std=c17 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror \
   "$task_esp/components/board_logic/src/led_grid.c" \
   -o "$task_build/esp32_core_tests"
 "$task_build/esp32_core_tests"
+${CC:-cc} -std=c17 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror \
+  -fsanitize="${SCB_SANITIZERS:-undefined}" -g \
+  -I "$task_esp/components/motor_control/include" -I "$task_esp/bench/corexy_s2/main" \
+  "$task_esp/tests/motor_control_tests.c" \
+  "$task_esp/components/motor_control/src/motor_control.c" \
+  "$task_esp/bench/corexy_s2/main/motor_bench.c" \
+  -lm -o "$task_build/motor_control_tests"
+"$task_build/motor_control_tests"

@@ -128,6 +128,67 @@ Set `STOCKFISH_EXECUTABLE` to select a Stockfish executable for another platform
 The Pi maintains the chess rules and logical board state. Both Stockfish and OpenRouter results must pass rules validation. After an illegal move, the physical board must be restored. Use `commit <uci>` to resolve promotions or ambiguous multi-square changes; matching occupancy is still required.
 This directory does not access Pi GPIO. All hardware operations are sent through the ESP32-S2-Saola-1 USB-UART protocol. The current connection uses MCU UART0 GPIO43/44 at 115200 baud; it does not require Pi GPIO wiring.
 
+## Square LED Move Hints
+
+Physical-board mode uses the same LED guidance for Stockfish moves, OpenRouter
+opponent moves, and AI Coaching recommendations. The default `--led-hints staged`
+first lights the source square blue. The destination starts blinking green when
+the debounced BOARD occupancy shows the source piece has been lifted, or after
+5 seconds, whichever happens first. The source stays blue; the destination
+alternates 0.5 seconds on and 0.5 seconds off. The timer continues without new
+sensor events, so a missed lift does not hide the destination.
+
+For two steady lights immediately (source blue, destination green), use:
+
+```sh
+# From the project root; replace the USB port as needed.
+sh pi5/start.sh board --port /dev/ttyUSB0 --opponent local --led-hints both
+sh pi5/start.sh board --port /dev/ttyUSB0 --coaching --coach-white on --coach-black off --led-hints both
+```
+
+Omit `--led-hints both` for the staged sequence. Timing runs in the Pi board loop
+using the existing ESP32 `LED`/`MARK` commands; this feature needs no firmware
+reflash or wiring change when those commands already work. The RGB LEDs are the
+external square LEDs, not the LOLIN32 onboard LED. Hints never arm the motors or
+change the logical position. Completed moves stop blinking and retain the
+existing steady move-confirmation lights. An illegal move stops the hint and
+shows the existing error feedback; restoring the board resumes the requested
+move. Disabling coaching for the current player or quitting cancels an active
+hint. Coaching remains optional: a player may choose any legal move.
+
+For a standalone LED bench test with no engine or initial-position requirement,
+run the following from the project root. On this Mac, create a local environment
+and install the bundled serial dependency once:
+
+```sh
+python3 -m venv esp32/.venv
+esp32/.venv/bin/python -m pip install --no-index --find-links pi5/vendor/python-wheels pyserial
+esp32/.venv/bin/python -m serial.tools.list_ports -v
+```
+
+Connect the external square LEDs and the ESP32 USB data cable, keep actuator
+power off, close other serial monitors, and replace the sample port below:
+
+```sh
+esp32/.venv/bin/python pi5/app/led_hint_demo.py --port /dev/cu.SLAB_USBtoUART --move e2e4 --timer-only
+esp32/.venv/bin/python pi5/app/led_hint_demo.py --port /dev/cu.SLAB_USBtoUART --move e2e4
+esp32/.venv/bin/python pi5/app/led_hint_demo.py --port /dev/cu.SLAB_USBtoUART --move e2e4 --led-hints both
+```
+
+The demo disarms outputs at startup, runs for 15 seconds, and clears its LEDs on
+completion or Ctrl+C. The first command ignores sensors and verifies that e4
+starts blinking after 5 seconds. Use the second command with e2 occupied, then
+lift the piece within 5 seconds to test the earlier sensor trigger. Without
+connected sensors, use `--timer-only` or both-steady mode. On the Pi,
+use `pi5/.venv/bin/python` and the actual port, commonly `/dev/ttyUSB0`.
+
+To check on hardware, start with a synchronized board and request a computer move
+or coaching hint. Leave the source piece in place for 5 seconds and check that
+the destination blinks. On a fresh hint, lift the source piece before 5 seconds
+and check that blinking starts early. Also check `--led-hints both`. Guidance
+does not replace occupancy validation: if the move event is missed, use
+`commit <uci>` once the complete physical position matches.
+
 Official references: [Stockfish 19](https://github.com/official-stockfish/Stockfish/releases/tag/sf_19), [UCI](https://official-stockfish.github.io/docs/stockfish-wiki/UCI-Protocol-and-Stockfish-Commands.html).
 
 ## Timing and Resource Defaults

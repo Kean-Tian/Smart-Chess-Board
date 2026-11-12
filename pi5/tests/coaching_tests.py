@@ -182,13 +182,70 @@ class CoachingTests(unittest.TestCase):
                 manager.on_board(expected_occupancy(game.fen(), "e2e4"))
                 self.assertEqual(game.move_history, ["e2e4"])
                 self.assertEqual(len(coach.requests), 1)
+                advised_move = manager.guidance.move
+                self.assertIn(advised_move, game.legal_moves())
+                self.assertEqual(link.commands[-2:], ["LED_CLEAR", f"LED {advised_move[:2]} 0 0 20"])
                 manager.on_board(occupancy(fen_board(game.fen())))
                 self.assertEqual(len(coach.requests), 1)
                 manager.on_board(expected_occupancy(game.fen(), "e7e5"))
                 self.assertTrue(manager.try_move("e7e5"))
                 self.assertEqual(game.move_history, ["e2e4", "e7e5"])
                 self.assertEqual(len(coach.requests), 1)
+                self.assertIsNone(manager.guidance.move)  # White coaching is OFF.
                 self.assertFalse(any(command.startswith(("ARM", "MOVE", "GOTO")) for command in link.commands))
+
+    def test_physical_hint_retry_and_disable_update_lights_without_playing_moves(self):
+        class Link:
+            def __init__(self): self.commands = []
+            def request(self, command, **kwargs): self.commands.append(command)
+        with Game() as game:
+            coach, link = Coach(), Link()
+            with CoachingSession(game, {"w": True, "b": False}, lambda: coach, lambda *_: None) as session:
+                manager = PhysicalGame(game, link, lambda *_: None, coaching=session)
+                self.addCleanup(manager.close)
+                now = [0.0]
+                manager.guidance._clock = lambda: now[0]
+                manager.on_board(occupancy(fen_board(game.fen())))
+                move, before = manager.guidance.move, game.fen()
+                now[0] = 5.0
+                manager.update_guidance()
+                self.assertEqual(link.commands[-1], f"LED {move[2:4]} 0 20 0")
+                session.handle_command("coach white off")
+                self.assertIsNone(manager.guidance.move)
+                self.assertEqual(link.commands[-1], "LED_CLEAR")
+                count = len(link.commands)
+                now[0] = 10.0
+                manager.update_guidance()
+                self.assertEqual(len(link.commands), count)
+                session.handle_command("coach white on")
+                self.assertEqual(link.commands[-1], f"LED {move[:2]} 0 0 20")
+                coach.fail_first = True
+                session.handle_command("hint")
+                self.assertIsNone(manager.guidance.move)
+                self.assertEqual(link.commands[-1], "LED_CLEAR")
+                session.handle_command("hint")
+                self.assertEqual(manager.guidance.move, move)
+                self.assertEqual(game.fen(), before)
+                self.assertEqual(game.move_history, [])
+
+    def test_illegal_move_cancels_flash_and_restoring_board_resumes_cached_hint(self):
+        class Link:
+            def __init__(self): self.commands = []
+            def request(self, command, **kwargs): self.commands.append(command)
+        with Game() as game:
+            coach, link = Coach(), Link()
+            with CoachingSession(game, {"w": True, "b": False}, lambda: coach, lambda *_: None) as session:
+                manager = PhysicalGame(game, link, lambda *_: None, coaching=session)
+                self.addCleanup(manager.close)
+                mask = occupancy(fen_board(game.fen()))
+                manager.on_board(mask)
+                move = manager.guidance.move
+                self.assertFalse(manager.try_move("e2e5"))
+                self.assertIsNone(manager.guidance.move)
+                self.assertEqual(link.commands[-1], "MARK e2 e5 ILLEGAL")
+                manager.on_board(mask)
+                self.assertEqual(manager.guidance.move, move)
+                self.assertEqual(len(coach.requests), 1)
 
 
 if __name__ == "__main__":

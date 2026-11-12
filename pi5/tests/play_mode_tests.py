@@ -67,7 +67,10 @@ class PlayModeTests(unittest.TestCase):
             self.assertEqual(play.main(["--board", "--opponent", "openrouter", "--port", "test-port"]), 0)
             args = run.call_args.args[0]
             self.assertEqual((args.opponent, args.mode, args.port), ("openrouter", "pvc", "test-port"))
+            self.assertEqual(args.led_hints, "staged")
             prompt.assert_not_called()
+            self.assertEqual(play.main(["--board", "--opponent", "local", "--led-hints", "both"]), 0)
+            self.assertEqual(run.call_args.args[0].led_hints, "both")
 
     def test_cloud_game_retries_same_position_and_never_starts_stockfish(self):
         game = Game()
@@ -164,7 +167,7 @@ class PlayModeTests(unittest.TestCase):
                 board.maybe_computer_turn()
             self.assertEqual(game.fen(), before)
             self.assertEqual(board.computer_move, "e7e5")
-            self.assertIn("MARK e7 e5 LEGAL", link.commands)
+            self.assertEqual(link.commands[-2:], ["LED_CLEAR", "LED e7 0 0 20"])
             self.assertFalse(any(command.startswith(("ARM", "MOVE", "GOTO")) for command in link.commands))
             board.on_board(expected_occupancy(before, "e7e5"))
             self.assertTrue(board.try_move("e7e5"))

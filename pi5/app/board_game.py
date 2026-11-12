@@ -18,6 +18,7 @@ from software_limits import (DEFAULT_MOVE_TIME_MS, FEEDBACK_ACK_TIMEOUT_S, BOARD
 from openrouter_engine import OpenRouterError
 from opponents import add_opponent_arguments, create_opponent, create_openrouter
 from coaching import CoachingSession, add_coaching_arguments, configure_coaching
+from move_guidance import MoveGuidance, add_led_hint_arguments
 
 
 def fen_board(fen):
@@ -62,7 +63,7 @@ def expected_occupancy(fen, legal_move):
 
 
 class PhysicalGame:
-    def __init__(self, game, link, report=print, engine=None, computer="b", movetime_ms=DEFAULT_MOVE_TIME_MS, coaching=None):
+    def __init__(self, game, link, report=print, engine=None, computer="b", movetime_ms=DEFAULT_MOVE_TIME_MS, coaching=None, led_hints="staged"):
         self.game, self.link, self.report = game, link, report
         self.mask = None
         self.initialized = False
@@ -74,11 +75,21 @@ class PhysicalGame:
         self.computer_move = None
         self.opponent_failed = False
         self.coaching = coaching
+        self.guidance = MoveGuidance(link, led_hints)
+        self._coaching_move = None
+        if coaching:
+            coaching.on_hint = self._on_coaching_hint
         self._executor = ThreadPoolExecutor(max_workers=1) if engine and hasattr(engine, "best_move") else None
         self._search = None
         self._search_fen = None
 
     def close(self):
+        if self.coaching:
+            self.coaching.on_hint = None
+        try:
+            self.guidance.clear()
+        except (DeviceError, TimeoutError, OSError):
+            pass  # A disconnected port must not prevent worker cleanup.
         if self._executor:
             self._executor.shutdown(wait=True, cancel_futures=True)
             self._executor = None
@@ -86,6 +97,16 @@ class PhysicalGame:
     # Ask the MCU to display legal/illegal move feedback on the external LEDs.
     def _mark(self, source, target, status):
         self.link.request(f"MARK {source} {target} {status}", timeout=FEEDBACK_ACK_TIMEOUT_S)
+
+    def _on_coaching_hint(self, advice):
+        self._coaching_move = advice.move if advice else None
+        if advice:
+            self.guidance.start(advice.move, self.mask)
+        else:
+            self.guidance.clear()
+
+    def update_guidance(self):
+        self.guidance.update(self.mask)
 
     @property
     def opponent_name(self):
@@ -109,7 +130,7 @@ class PhysicalGame:
             if move not in self.game.legal_moves():
                 raise EngineError("Computer move failed authoritative rules validation")
             self.computer_move = move
-            self._mark(move[:2], move[2:4], "LEGAL")
+            self.guidance.start(move, self.mask)
             self.report(f"{self.opponent_name} > {move}. Execute this move on the physical board.")
             return
         if (self.engine is None or not self.initialized or self.restore_required or
@@ -140,12 +161,13 @@ class PhysicalGame:
         if move not in self.game.legal_moves():
             raise EngineError("Computer move failed authoritative rules validation")
         self.computer_move = move
-        self._mark(move[:2], move[2:4], "LEGAL")
+        self.guidance.start(move, self.mask)
         self.report(f"{self.opponent_name} > {move}. Execute this move on the physical board.")
 
     # Receive a physical occupancy snapshot and check synchronization with the logical game.
     def on_board(self, mask):
         self.mask = mask
+        self.update_guidance()
         if mask == occupancy(fen_board(self.game.fen())):
             self.initialized = True
             self.restore_required = False
@@ -153,6 +175,10 @@ class PhysicalGame:
             self.report("Board synchronized.")
             if self.coaching:
                 self.coaching.show_hint()
+            # Restoring an invalid move resumes the existing recommendation.
+            move = self.computer_move or self._coaching_move
+            if move and self.guidance.move is None:
+                self.guidance.start(move, mask)
         elif self.pending:
             self.try_move(self.pending)
 
@@ -170,6 +196,7 @@ class PhysicalGame:
                 move = wanted  # Use the engine's explicit promotion choice.
             if not wanted or move != wanted:
                 self.restore_required = True
+                self.guidance.clear()
                 self.report("Restore the board, then follow the requested computer move.")
                 return False
         legal = self.game.legal_moves()
@@ -177,6 +204,7 @@ class PhysicalGame:
         if not choices:
             self.pending = None
             self.restore_required = True
+            self.guidance.clear()
             self._mark(move[:2], move[2:4], "ILLEGAL")
             self.report("Illegal move. Logical state unchanged; restore the board.")
             return False
@@ -193,6 +221,8 @@ class PhysicalGame:
             raise RuntimeError("Rules engine rejected its generated legal move")
         self.pending = None
         self.computer_move = None
+        self._coaching_move = None
+        self.guidance.clear()
         self._mark(uci[:2], uci[2:4], "LEGAL")
         self.report(self.game.board_text())
         if self.game.status():
@@ -216,7 +246,8 @@ def run(args):
         coaching = stack.enter_context(CoachingSession(game, settings, lambda: create_openrouter(args.model))) if coaching_requested else None
         link = stack.enter_context(ScbLink.open(args.port))
         manager = PhysicalGame(game, link, engine=engine, computer=args.computer[0],
-                               movetime_ms=args.movetime, coaching=coaching)
+                               movetime_ms=args.movetime, coaching=coaching,
+                               led_hints=getattr(args, "led_hints", "staged"))
         stack.callback(manager.close)
         if engine:
             print(f"Opponent: {engine.name}. Computer plays {args.computer}.")
@@ -246,6 +277,7 @@ def run(args):
                     print(frame.kind, frame.payload)
             except queue.Empty:
                 pass
+            manager.update_guidance()
             manager.maybe_computer_turn()
             if select.select([sys.stdin], [], [], 0)[0]:
                 line = sys.stdin.readline().strip().lower()
@@ -275,6 +307,7 @@ def main(argv=None):
     parser.add_argument("--mode", choices=["pvp", "pvc"], default="pvp")
     add_opponent_arguments(parser)
     add_coaching_arguments(parser)
+    add_led_hint_arguments(parser)
     return run(parser.parse_args(argv))
 
 
