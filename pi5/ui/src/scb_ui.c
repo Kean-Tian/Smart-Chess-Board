@@ -18,11 +18,11 @@
 #define RED 0xA94337
 
 typedef enum {
-    A_NAV, A_SELECT, A_NEW, A_EDIT, A_SAVE, A_CANCEL, A_DELETE,
+    A_NONE, A_NAV, A_SELECT, A_NEW, A_EDIT, A_SAVE, A_CANCEL, A_DELETE,
     A_CONFIRM_DELETE, A_PAGE, A_RETRY, A_MODE, A_SIDE, A_CLOCK, A_PICK,
     A_USE_PLAYER, A_PREPARE, A_CHECK, A_VERIFIED, A_START, A_PAUSE, A_END,
-    A_CONFIRM_END, A_HINT, A_CONFIRM_MOVE, A_PROMOTE, A_CONNECT, A_SCAN,
-    A_DETAILS, A_LEDS, A_HISTORY_PAGE, A_REVIEW, A_REVIEW_STEP
+    A_CONFIRM_END, A_HINT, A_CONFIRM_MOVE, A_PROMOTE, A_CONNECT,
+    A_HISTORY_PAGE, A_REVIEW, A_REVIEW_STEP
 } Action;
 typedef struct {
     lv_obj_t *obj;
@@ -40,30 +40,32 @@ static bool data_ok;
 static int64_t editing_id, deleting_id;
 static lv_obj_t *name_input, *form_error;
 static char database_path[4096];
-static const char *screen_names[] = {"home", "setup", "profiles", "history", "diagnostics", "player-editor", "board-setup", "game", "review", "move-editor"};
+static const char *screen_names[] = {"home", "setup", "profiles", "history", "player-editor", "board-setup", "game", "review", "move-editor"};
 static const char *mode_codes[] = {"pvp", "pvc", "coach"};
-static const char *mode_titles[] = {"Two players", "Vs computer", "With coaching"};
+static const char *mode_titles[] = {"Two players", "Vs computer", "AI coaching"};
 static UiBridge bridge;
 static struct {
-    int mode, human, minutes, pick_side, port_index, history_offset, diag_return, review_return;
+    /* 界面中的临时选择；真正的对局状态由 Python 后台确认。 */
+    int mode, human, minutes, pick_side, port_index, history_offset, review_return;
     ScbPlayer white, black;
-    bool verified, show_hint, ending, review_pending;
+    bool verified, show_hint, ending, review_pending, reconnecting;
     int64_t review_id, review_ply, review_total;
 } config;
 static lv_obj_t *title_label, *status_label, *clock_labels[2], *last_move_label;
 static lv_obj_t *pause_button, *hint_button, *end_button, *move_button;
-static lv_obj_t *check_button, *start_button, *verified_button, *connection_button, *scan_button;
-static lv_obj_t *port_dropdown, *occupancy_label, *timing_label, *dots[64];
-static lv_obj_t *review_count, *review_move, *review_previous, *review_next, *led_button, *continue_button;
+static lv_obj_t *check_button, *start_button, *verified_button, *connection_button;
+static lv_obj_t *port_dropdown;
+static lv_obj_t *review_count, *review_move, *review_previous, *review_next, *continue_button;
 static lv_obj_t *piece_images[64];
 static char local_notice[256], port_options[1600];
 static unsigned last_changes;
 static uint32_t last_live_refresh;
 static bool end_dialog_open;
 static bool service_online(void);
+static bool state_flag(const char *path);
 static void refresh_live(void);
 static void request_history(void);
-static void draw_position(int x, int y, int size, const char *fen, bool occupancy);
+static void draw_position(int x, int y, int size, const char *fen);
 static bool command(const char *format, ...);
 
 static const lv_font_t *font(int size) {
@@ -77,6 +79,7 @@ static const lv_font_t *font(int size) {
 }
 static lv_obj_t *root(void) { return lv_screen_active(); }
 static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t fill, int radius) {
+    /* 卡片的公共样式；坐标相对于 parent，而不是始终相对于屏幕。 */
     lv_obj_t *o = lv_obj_create(parent);
     lv_obj_remove_style_all(o);
     lv_obj_set_pos(o, x, y);
@@ -88,6 +91,7 @@ static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t fill
     return o;
 }
 static lv_obj_t *text(lv_obj_t *parent, const char *value, int x, int y, int w, int size, uint32_t color) {
+    /* 创建文字控件，统一字体、颜色和自动换行。 */
     lv_obj_t *o = lv_label_create(parent);
     lv_obj_set_pos(o, x, y);
     lv_obj_set_width(o, w);
@@ -107,6 +111,7 @@ static void click(lv_event_t *event);
 static void editor_event(lv_event_t *event);
 static lv_obj_t *button(lv_obj_t *parent, const char *title, int x, int y, int w, int h,
                         bool primary, const char *id, Action action, int64_t value, const char *target) {
+    /* 创建按钮并绑定动作；真正点击后统一进入 click()。 */
     lv_obj_t *b = lv_button_create(parent);
     lv_obj_remove_style_all(b);
     lv_obj_set_pos(b, x, y);
@@ -146,49 +151,51 @@ static bool reload_players(void) {
     return data_ok;
 }
 static void shell(const char *title, const char *subtitle) {
+    /* 清理上一页控件并建立公共页头；后台的游戏状态不在这里删除。 */
     lv_obj_clean(root());
     hit_count = 0;
     name_input = form_error = NULL;
     title_label = status_label = last_move_label = NULL;
     clock_labels[0] = clock_labels[1] = NULL;
     pause_button = hint_button = end_button = move_button = NULL;
-    check_button = start_button = verified_button = connection_button = scan_button = NULL;
-    port_dropdown = occupancy_label = timing_label = NULL;
-    review_count = review_move = review_previous = review_next = led_button = continue_button = NULL;
-    memset(dots, 0, sizeof(dots));
+    check_button = start_button = verified_button = connection_button = NULL;
+    port_dropdown = NULL;
+    review_count = review_move = review_previous = review_next = continue_button = NULL;
     memset(piece_images, 0, sizeof(piece_images));
     end_dialog_open = false;
     lv_obj_set_style_bg_color(root(), lv_color_hex(BG), 0);
     lv_obj_set_style_text_color(root(), lv_color_hex(INK), 0);
     lv_obj_remove_flag(root(), LV_OBJ_FLAG_SCROLLABLE);
-    text(root(), "SCB / TEAM 24", 32, 24, 300, 20, MUTED);
-    lv_obj_t *badge = box(root(), 526, 14, 162, 42, SOFT, 21);
-    text(badge, "LOCAL UI", 25, 8, 130, 20, MUTED);
     if(current != UI_HOME) {
+        /* 回放可能从不同页面进入，返回时使用记住的来源。 */
         UiScreen back = current == UI_PLAYER_EDITOR ? UI_PROFILES :
             current == UI_REVIEW ? (UiScreen)config.review_return : current == UI_MOVE_EDITOR ? UI_GAME :
-            current == UI_BOARD_SETUP ? UI_SETUP : current == UI_DIAGNOSTICS ? (UiScreen)config.diag_return : UI_HOME;
+            current == UI_BOARD_SETUP ? (config.reconnecting ? UI_GAME : UI_SETUP) : UI_HOME;
         button(root(), LV_SYMBOL_LEFT, 32, 88, 80, 80, false, "back", A_NAV, back, screen_names[back]);
     }
     title_label = text(root(), title, current == UI_HOME ? 32 : 136, 104, current == UI_HOME ? 656 : 552, 40, INK);
     text(root(), subtitle, 32, 190, 656, 24, MUTED);
-    text(root(), "Play on the physical board / SCB Team 24", 32, 1242, 656, 20, MUTED);
 }
 static void feature(const char *title, const char *description, const char *symbol,
                     int x, int y, const char *id, UiScreen destination, bool primary) {
-    lv_obj_t *b = button(root(), "", x, y, 320, 244, primary, id, A_NAV, destination, screen_names[destination]);
+    bool has_page = destination < UI_SCREEN_COUNT;
+    lv_obj_t *b = button(root(), "", x, y, 320, 244, primary, id,
+                         has_page ? A_NAV : A_NONE, has_page ? destination : 0,
+                         has_page ? screen_names[destination] : NULL);
     uint32_t color = primary ? PAPER : INK;
     text(b, symbol, 24, 26, 100, 40, primary ? GOLD : MUTED);
     text(b, title, 24, 104, 272, 32, color);
-    text(b, description, 24, 158, 272, 20, primary ? 0xDCDDD4 : MUTED);
+    if(description[0]) text(b, description, 24, 158, 272, 20, primary ? 0xDCDDD4 : MUTED);
 }
 static void home(void) {
+    /* 主菜单四个入口，加上实际选中的玩家和当前游戏状态。 */
     reload_players();
     shell("Smart Chess Board", "Play, manage players and review your recorded games.");
     feature("New game", "Two players, computer\nor local coaching", LV_SYMBOL_PLAY, 32, 280, "new-game", UI_SETUP, true);
     feature("Players", "Create, select and\nmanage saved players", LV_SYMBOL_DIRECTORY, 368, 280, "players", UI_PROFILES, false);
     feature("History", "Recorded results\nand move-by-move review", LV_SYMBOL_LIST, 32, 544, "history", UI_HISTORY, false);
-    feature("Diagnostics", "Connection, occupancy\nand measured scan timing", LV_SYMBOL_SETTINGS, 368, 544, "diagnostics", UI_DIAGNOSTICS, false);
+    /* 与其他卡片使用相同样式，但点击不跳转，也不执行调试操作。 */
+    feature("Diagnostics", "", LV_SYMBOL_SETTINGS, 368, 544, "diagnostics", UI_SCREEN_COUNT, false);
     lv_obj_t *card = box(root(), 32, 836, 656, 144, PAPER, 24);
     text(card, "SELECTED PLAYER", 24, 22, 608, 20, MUTED);
     clipped_text(card, !data_ok ? "Database unavailable" : selected.id ? selected.name : "No player selected", 24, 68, 608, 32, INK);
@@ -198,6 +205,7 @@ static void home(void) {
     continue_button = button(root(), "Open current game", 32, 1120, 656, 88, false, "continue-game", A_NAV, UI_GAME, "game");
 }
 static void setup(void) {
+    /* 读取玩家并显示模式、执棋颜色和时间；此时还没有正式开局。 */
     reload_players();
     if(config.white.id) player_store_get(&store, config.white.id, &config.white);
     if(config.black.id) player_store_get(&store, config.black.id, &config.black);
@@ -242,6 +250,7 @@ static void setup(void) {
     button(root(), "Set up the board  " LV_SYMBOL_RIGHT, 32, 1128, 656, 96, true, "prepare", A_PREPARE, 0, "board-setup");
 }
 static void profiles(void) {
+    /* 每次从数据库读取玩家；没有记录时显示空状态，不填入示例。 */
     reload_players();
     shell("Players", "Create and manage your saved player profiles.");
     char count[64];
@@ -278,6 +287,7 @@ static void profiles(void) {
     disable(button(root(), "Use selected player", 32, 1112, 656, 88, true, "use-player", A_USE_PLAYER, 0, "setup"), !data_ok || !selected.id);
 }
 static void player_editor(void) {
+    /* 新建和改名共用输入页，将屏幕键盘绑定到名字输入框。 */
     shell(editing_id ? "Rename player" : "Create player", "Save a player name to your local database.");
     text(root(), "PLAYER NAME", 32, 272, 656, 20, MUTED);
     name_input = lv_textarea_create(root());
@@ -305,6 +315,7 @@ static void player_editor(void) {
     button(root(), "Cancel", 368, 1140, 320, 88, false, "cancel-editor", A_CANCEL, 0, "profiles");
 }
 static void history(void) {
+    /* 显示后台查询出的真实对局；点击卡片后请求这局的回放。 */
     shell("Game history", "Real recorded games, including unfinished sessions.");
     int64_t total = ui_json_int(&bridge, bridge.history, "$.total", -1);
     int64_t offset = ui_json_int(&bridge, bridge.history, "$.offset", config.history_offset);
@@ -341,27 +352,8 @@ static void dropdown_event(lv_event_t *event) {
     lv_obj_t *o = lv_event_get_target(event);
     if(o == port_dropdown) config.port_index = (int)lv_dropdown_get_selected(o);
 }
-static void diagnostics(void) {
-    shell("Board diagnostics", "Logical squares / check the physical corner mapping.");
-    status_label = text(root(), "", 32, 246, 656, 20, MUTED);
-    lv_obj_set_height(status_label, 62);
-    lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
-    port_dropdown = lv_dropdown_create(root());
-    lv_obj_set_pos(port_dropdown, 32, 316);
-    lv_obj_set_size(port_dropdown, 656, 64);
-    lv_obj_set_style_text_font(port_dropdown, font(24), 0);
-    lv_dropdown_set_options(port_dropdown, "No USB serial ports");
-    lv_obj_add_event_cb(port_dropdown, dropdown_event, LV_EVENT_VALUE_CHANGED, NULL);
-    port_options[0] = '\0';
-    connection_button = button(root(), "Connect board", 32, 400, 320, 72, true, "connect-board", A_CONNECT, 0, NULL);
-    scan_button = button(root(), "Scan now", 368, 400, 320, 72, false, "scan-board", A_SCAN, 0, NULL);
-    draw_position(104, 496, 512, NULL, true);
-    occupancy_label = text(root(), "Occupancy unavailable", 32, 1056, 656, 24, MUTED);
-    timing_label = text(root(), "Scan period: unavailable", 32, 1100, 656, 20, MUTED);
-    button(root(), "Details", 32, 1160, 320, 64, false, "sensor-details", A_DETAILS, 0, NULL);
-    led_button = button(root(), "LED feedback", 368, 1160, 320, 64, false, "led-feedback", A_LEDS, 0, NULL);
-}
-static void draw_position(int x, int y, int size, const char *fen, bool occupancy_view) {
+static void draw_position(int x, int y, int size, const char *fen) {
+    /* 按 FEN 绘制棋子，用于开局目标图和历史回放。 */
     char pieces[64];
     memset(pieces, '.', sizeof(pieces));
     if(fen) {
@@ -377,22 +369,16 @@ static void draw_position(int x, int y, int size, const char *fen, bool occupanc
         text(root(), rank, x-24, y+r*cell+cell/2-12, 20, 20, MUTED);
         for(int c = 0; c < 8; ++c) {
             int index = r*8+c;
-            int square = (7-r)*8+c;
             lv_obj_t *tile = box(root(), x+c*cell, y+r*cell, cell, cell, ((r+c)&1) ? 0xA49B85 : 0xE9E3D5, 0);
-            if(occupancy_view) {
-                dots[square] = box(tile, cell/2-10, cell/2-10, 20, 20, 0x38674E, 10);
-                lv_obj_add_flag(dots[square], LV_OBJ_FLAG_HIDDEN);
-            } else {
-                piece_images[index] = lv_image_create(tile);
-                lv_obj_center(piece_images[index]);
-                if(pieces[index] == '.') lv_obj_add_flag(piece_images[index], LV_OBJ_FLAG_HIDDEN);
-                else {
-                    char path[2048];
-                    bool white = pieces[index] >= 'A' && pieces[index] <= 'Z';
-                    char piece = white ? (char)(pieces[index] + ('a'-'A')) : pieces[index];
-                    snprintf(path, sizeof(path), "P:%s/%s-%c.png", SCB_UI_ASSET_DIR, white ? "white" : "black", piece);
-                    lv_image_set_src(piece_images[index], path);
-                }
+            piece_images[index] = lv_image_create(tile);
+            lv_obj_center(piece_images[index]);
+            if(pieces[index] == '.') lv_obj_add_flag(piece_images[index], LV_OBJ_FLAG_HIDDEN);
+            else {
+                char path[2048];
+                bool white = pieces[index] >= 'A' && pieces[index] <= 'Z';
+                char piece = white ? (char)(pieces[index] + ('a'-'A')) : pieces[index];
+                snprintf(path, sizeof(path), "P:%s/%s-%c.png", SCB_UI_ASSET_DIR, white ? "white" : "black", piece);
+                lv_image_set_src(piece_images[index], path);
             }
         }
     }
@@ -402,19 +388,40 @@ static void draw_position(int x, int y, int size, const char *fen, bool occupanc
     }
 }
 static void board_setup(void) {
-    shell("Set up the board", "Target layout / sensors detect presence, not piece type.");
+    /* 图中是目标摆放，不是传感器实况；检查占用后还需人工确认棋种。 */
+    config.reconnecting = state_flag("$.active");
+    shell(config.reconnecting ? "Board connection" : "Set up the board",
+          config.reconnecting ? "Reconnect and restore the last accepted position." :
+          "Target layout / sensors detect presence, not piece type.");
     text(root(), mode_titles[config.mode], 32, 252, 656, 20, MUTED);
-    draw_position(104, 310, 512, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", false);
+    /* 开局只保留必要的连接入口，不提供独立诊断页面。 */
+    port_dropdown = lv_dropdown_create(root());
+    lv_obj_set_pos(port_dropdown, 32, 300);
+    lv_obj_set_size(port_dropdown, 432, 64);
+    lv_obj_set_style_text_font(port_dropdown, font(24), 0);
+    lv_dropdown_set_options(port_dropdown, "No USB serial ports");
+    lv_obj_add_event_cb(port_dropdown, dropdown_event, LV_EVENT_VALUE_CHANGED, NULL);
+    port_options[0] = '\0';
+    connection_button = button(root(), "Connect board", 480, 300, 208, 64, true, "connect-board", A_CONNECT, 0, NULL);
+    lv_obj_set_style_text_font(connection_button, font(24), 0);
+    char fen[128];
+    bool saved_position = config.reconnecting && ui_json_text(&bridge, bridge.state, "$.fen", fen, sizeof(fen));
+    draw_position(144, 390, 432, saved_position ? fen : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
     status_label = text(root(), "", 32, 866, 656, 24, MUTED);
     lv_obj_set_height(status_label, 104);
     lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
-    check_button = button(root(), "Check position", 32, 988, 320, 72, false, "check-position", A_CHECK, 0, NULL);
-    button(root(), "Diagnostics", 368, 988, 320, 72, false, "board-diagnostics", A_NAV, UI_DIAGNOSTICS, "diagnostics");
+    if(config.reconnecting) {
+        /* 对局断线时复用连接入口；不会创建新对局或重置当前棋局。 */
+        button(root(), "Return to game", 32, 988, 656, 72, true, "return-game", A_NAV, UI_GAME, "game");
+        return;
+    }
+    check_button = button(root(), "Check position", 32, 988, 656, 72, false, "check-position", A_CHECK, 0, NULL);
     verified_button = button(root(), "I verified piece types and colors", 32, 1080, 656, 64, false, "verify-pieces", A_VERIFIED, 0, NULL);
     lv_obj_set_style_text_font(verified_button, font(24), 0);
     start_button = button(root(), "Start game", 32, 1160, 656, 64, true, "start-game", A_START, 0, "game");
 }
 static void active_game(void) {
+    /* 先创建时钟和状态控件，后续由 refresh_live() 更新内容。 */
     shell("Current game", "Live turns, clocks and accepted physical moves.");
     for(int i = 0; i < 2; ++i) {
         lv_obj_t *card = box(root(), 32+i*336, 266, 320, 180, PAPER, 24);
@@ -444,11 +451,14 @@ static void active_game(void) {
         const char pieces[] = {'q','r','b','n'};
         for(int i = 0; i < 4; ++i) button(root(), names[i], 32+i*168, 1040, 152, 80, false, "promote", A_PROMOTE, pieces[i], NULL);
     }
-    lv_obj_t *position = button(root(), "View current position", 32, 1140, 656, 80, false, "view-position", A_REVIEW,
+    lv_obj_t *position = button(root(), "View position", 32, 1140, 320, 80, false, "view-position", A_REVIEW,
                                 ui_json_int(&bridge, bridge.state, "$.game_id", 0), "review");
     disable(position, ui_json_int(&bridge, bridge.state, "$.game_id", 0) <= 0);
+    disable(button(root(), "Board connection", 368, 1140, 320, 80, false, "game-connection", A_NAV, UI_BOARD_SETUP, "board-setup"),
+            !state_flag("$.active"));
 }
 static void review(void) {
+    /* 显示已保存的局面，Previous/Next 只改变查看的步数。 */
     shell("Review game", "Saved positions / the physical board is not moved.");
     char fen[128], names[120], white[40], black[40];
     bool loaded = ui_json_text(&bridge, bridge.review, "$.fen", fen, sizeof(fen)) &&
@@ -457,7 +467,7 @@ static void review(void) {
     ui_json_text(&bridge, bridge.review, "$.black", black, sizeof(black));
     snprintf(names, sizeof(names), "%s vs %s", white, black);
     text(root(), loaded ? names : "Loading saved game...", 32, 260, 656, 24, MUTED);
-    draw_position(64, 330, 592, loaded ? fen : NULL, false);
+    draw_position(64, 330, 592, loaded ? fen : NULL);
     review_move = text(root(), "", 32, 968, 656, 28, INK);
     lv_obj_set_height(review_move, 40);
     lv_label_set_long_mode(review_move, LV_LABEL_LONG_DOT);
@@ -477,6 +487,7 @@ static void review(void) {
     disable(review_next, !loaded || config.review_ply >= config.review_total || config.review_pending);
 }
 static void move_editor(void) {
+    /* 传感器走法不明确时输入 UCI；后台仍会检查合法性与实际占用。 */
     shell("Confirm move", "Use this for an ambiguous or special physical move.");
     text(root(), "UCI MOVE / FOR EXAMPLE e2e4", 32, 272, 656, 20, MUTED);
     name_input = lv_textarea_create(root());
@@ -511,6 +522,7 @@ static void delete_dialog(void) {
     button(dialog, "Cancel", 328, 326, 296, 88, false, "cancel-delete", A_CANCEL, 0, "profiles");
 }
 static void save_player(void) {
+    /* 两个表单共用保存入口：走法发给后台，玩家写入 SQLite。 */
     if(current == UI_MOVE_EDITOR && name_input) {
         const char *move = lv_textarea_get_text(name_input);
         size_t n = strlen(move);
@@ -557,6 +569,7 @@ static void button_value(lv_obj_t *button_object, const char *value) {
     if(button_object) label_value(lv_obj_get_child(button_object, 0), value);
 }
 static bool command(const char *format, ...) {
+    /* 把用户操作排入本机通信队列；发送成功不等于后台执行成功。 */
     char request[1024];
     va_list arguments;
     va_start(arguments, format);
@@ -571,16 +584,6 @@ static bool command(const char *format, ...) {
     return true;
 }
 static void request_history(void) { command("{\"cmd\":\"history\",\"offset\":%d}", config.history_offset); }
-static void info_dialog(const char *title, const char *detail) {
-    lv_obj_t *overlay = box(root(), 0, 0, 720, 1280, 0x30342D, 0);
-    lv_obj_set_style_bg_opa(overlay, 190, 0);
-    lv_obj_t *dialog = box(overlay, 32, 300, 656, 850, PAPER, 30);
-    text(dialog, title, 32, 32, 592, 32, INK);
-    lv_obj_t *body = text(dialog, detail, 32, 112, 592, 20, INK);
-    lv_obj_set_height(body, 600);
-    lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
-    button(dialog, "Close", 32, 730, 592, 88, true, "close-info", A_CANCEL, 0, NULL);
-}
 static void end_dialog(void) {
     end_dialog_open = true;
     lv_obj_t *overlay = box(root(), 0, 0, 720, 1280, 0x30342D, 0);
@@ -593,6 +596,7 @@ static void end_dialog(void) {
     button(dialog, "Cancel", 32, 600, 592, 88, false, "cancel-end", A_CANCEL, 0, NULL);
 }
 static void refresh_live(void) {
+    /* 根据后台状态更新文字和按钮，避免每次更新都重建整个页面。 */
     bool online = service_online(), active = state_flag("$.active"), paused = state_flag("$.paused");
     bool known = state_flag("$.board_known"), board_connected = state_flag("$.board_connected");
     char message[1024], error[512], value[256];
@@ -606,6 +610,7 @@ static void refresh_live(void) {
         if(continue_button) disable(continue_button, !online || ui_json_int(&bridge, bridge.state, "$.game_id", 0) <= 0);
     }
     if(current == UI_BOARD_SETUP) {
+        /* 新鲜占用匹配且人工确认后才启用 Start，后台还会再次检查。 */
         bool ready = state_flag("$.ready") && known;
         if(!ready) config.verified = false;
         if(check_button) disable(check_button, !online || !board_connected || state_flag("$.usb_busy"));
@@ -654,10 +659,9 @@ static void refresh_live(void) {
         disable(move_button, !active || paused || !known);
         button_value(pause_button, paused ? "Resume" : "Pause");
     }
-    if(current == UI_DIAGNOSTICS) {
-        char options[sizeof(port_options)] = "", path[80], port[128], current_port[128];
+    if(current == UI_BOARD_SETUP) {
+        char options[sizeof(port_options)] = "", path[80], port[128];
         int count = 0;
-        ui_json_text(&bridge, bridge.state, "$.port", current_port, sizeof(current_port));
         for(int i = 0; i < 8; ++i) {
             snprintf(path, sizeof(path), "$.ports[%d].port", i);
             if(!ui_json_text(&bridge, bridge.state, path, port, sizeof(port))) break;
@@ -674,44 +678,24 @@ static void refresh_live(void) {
         }
         disable(port_dropdown, !online || board_connected || state_flag("$.usb_busy") || !count);
         disable(connection_button, !online || state_flag("$.usb_busy") || (!count && !board_connected));
-        disable(scan_button, !board_connected || state_flag("$.usb_busy"));
         button_value(connection_button, board_connected ? "Disconnect" : "Connect board");
-        char mask_text[32];
-        if(known && ui_json_text(&bridge, bridge.state, "$.board", mask_text, sizeof(mask_text))) {
-            uint64_t mask = strtoull(mask_text, NULL, 16);
-            unsigned occupied = 0;
-            for(unsigned i = 0; i < 64; ++i) {
-                bool occupied_square = (mask & (UINT64_C(1)<<i)) != 0;
-                if(occupied_square) { lv_obj_remove_flag(dots[i], LV_OBJ_FLAG_HIDDEN); ++occupied; }
-                else lv_obj_add_flag(dots[i], LV_OBJ_FLAG_HIDDEN);
-            }
-            snprintf(value, sizeof(value), "%u / 64 squares occupied", occupied);
-        } else {
-            for(unsigned i = 0; i < 64; ++i) lv_obj_add_flag(dots[i], LV_OBJ_FLAG_HIDDEN);
-            snprintf(value, sizeof(value), "Occupancy unavailable / no fresh scan");
-        }
-        label_value(occupancy_label, value);
-        int64_t scan = ui_json_int(&bridge, bridge.state, "$.frame_us", 0);
-        int64_t debounce = ui_json_int(&bridge, bridge.state, "$.debounce_us", 0);
-        if(known && scan > 0) snprintf(value, sizeof(value), "Full scan: %.3f ms\nDebounce confirmation: %.3f ms", scan/1000.0, debounce/1000.0);
-        else snprintf(value, sizeof(value), "Scan and debounce timing: unavailable");
-        label_value(timing_label, value);
-        button_value(led_button, state_flag("$.led_feedback") ? "LED feedback: ON" : "LED feedback: OFF");
-        if(online && !error[0] && !local_notice[0]) snprintf(message, sizeof(message), "%s%s", board_connected ? "Connected: " : "Not connected. ", board_connected ? current_port : "Choose a port, then connect.");
+        if(online && !error[0] && !local_notice[0] && !board_connected)
+            snprintf(message, sizeof(message), "Choose a USB port above, then connect the board.");
     }
     if(current == UI_REVIEW && error[0]) label_value(review_move, error);
     char board_fault[256];
-    if(current == UI_DIAGNOSTICS && ui_json_text(&bridge, bridge.state, "$.fault", board_fault, sizeof(board_fault)) && board_fault[0])
+    if((current == UI_BOARD_SETUP || current == UI_GAME) && ui_json_text(&bridge, bridge.state, "$.fault", board_fault, sizeof(board_fault)) && board_fault[0])
         snprintf(message, sizeof(message), "Board fault: %s", board_fault);
     label_value(status_label, message);
 }
 static void click(lv_event_t *event) {
+    /* 按绑定的 Action 分发点击；改设置、切页面或向后台发请求。 */
     Hit hit = *(Hit *)lv_event_get_user_data(event);
     if(lv_obj_has_state(hit.obj, LV_STATE_DISABLED)) return;
     switch(hit.action) {
+        case A_NONE: break;
         case A_NAV:
             if(hit.value == UI_PROFILES && current == UI_HOME) config.pick_side = -1;
-            if(hit.value == UI_DIAGNOSTICS) config.diag_return = current == UI_BOARD_SETUP ? UI_BOARD_SETUP : UI_HOME;
             scb_ui_show((UiScreen)hit.value);
             if(hit.value == UI_HISTORY) request_history();
             break;
@@ -797,15 +781,6 @@ static void click(lv_event_t *event) {
                     command("{\"cmd\":\"connect\",\"port\":%s}", quoted);
             }
             break;
-        case A_SCAN: command("{\"cmd\":\"scan\"}"); break;
-        case A_DETAILS: {
-            char trace[1024], fault[256], detail[1600];
-            ui_json_text(&bridge, bridge.state, "$.sensor_trace", trace, sizeof(trace));
-            ui_json_text(&bridge, bridge.state, "$.fault", fault, sizeof(fault));
-            snprintf(detail, sizeof(detail), "Last reported raw MUX/GPIO trace (as wired):\n%s\n\nFault: %s\n\nCoordinates follow the firmware mapping. Test a1, h1, a8 and h8 before playing.", trace[0] ? trace : "No occupied-row trace received.", fault[0] ? fault : "None reported");
-            info_dialog("Sensor details", detail); break;
-        }
-        case A_LEDS: command("{\"cmd\":\"led_feedback\",\"enabled\":%s}", state_flag("$.led_feedback") ? "false" : "true"); break;
         case A_HISTORY_PAGE:
             config.history_offset += (int)hit.value;
             if(config.history_offset < 0) config.history_offset = 0;
@@ -825,13 +800,13 @@ static void click(lv_event_t *event) {
     }
 }
 void scb_ui_show(UiScreen screen) {
+    /* 页面编号相当于路由，决定调用哪个页面创建函数。 */
     current = screen;
     switch(screen) {
         case UI_HOME: home(); break;
         case UI_SETUP: setup(); break;
         case UI_PROFILES: profiles(); break;
         case UI_HISTORY: history(); break;
-        case UI_DIAGNOSTICS: diagnostics(); break;
         case UI_PLAYER_EDITOR: player_editor(); break;
         case UI_BOARD_SETUP: board_setup(); break;
         case UI_GAME: active_game(); break;
@@ -843,6 +818,7 @@ void scb_ui_show(UiScreen screen) {
     lv_obj_update_layout(root());
 }
 void scb_ui_init(const char *path) {
+    /* 打开玩家库、初始化本机通信，再显示首页。 */
     page_offset = 0;
     editing_id = deleting_id = 0;
     memset(&config, 0, sizeof(config));
@@ -864,13 +840,14 @@ void scb_ui_backspace(void) {
 }
 void scb_ui_submit(void) { save_player(); }
 void scb_ui_tick(void) {
+    /* 主循环反复调用：收后台消息，按结果跳转并更新实时显示。 */
     last_changes = ui_bridge_poll(&bridge, lv_tick_get());
     if((last_changes & SCB_BRIDGE_HISTORY) && current == UI_HISTORY) scb_ui_show(UI_HISTORY);
     if((last_changes & SCB_BRIDGE_REVIEW) && current == UI_REVIEW) {
         config.review_pending = false;
         scb_ui_show(UI_REVIEW);
     }
-    if(state_flag("$.active") && current == UI_BOARD_SETUP) scb_ui_show(UI_GAME);
+    if(state_flag("$.active") && current == UI_BOARD_SETUP && !config.reconnecting) scb_ui_show(UI_GAME);
     if(config.ending && service_online() && !state_flag("$.active")) {
         config.ending = false;
         config.history_offset = 0;
@@ -930,6 +907,7 @@ static bool label_bounds(lv_obj_t *parent) {
 bool scb_ui_smoke_test(void) {
     /* The host supplies an isolated temporary database for this test. */
     if(!data_ok || player_count || selected.id) return false;
+    if(!press("diagnostics") || current != UI_HOME) return false;
     if(!press("new-game") || current != UI_SETUP) return false;
     if(!press("mode-computer") || config.mode != 1) return false;
     if(!press("clock-five") || config.minutes != 5) return false;
@@ -999,10 +977,8 @@ bool scb_ui_service_test(void) {
     if(!press("save-player") || !press("use-player")) return false;
     if(!press("choose-black") || !press("select-player") || !press("use-player")) return false;
     if(!press("clock-none") || !press("prepare") || current != UI_BOARD_SETUP) return false;
-    if(!press("board-diagnostics")) return false;
     if(!wait_json(bridge.state, "$.ports[0].description", "Configured board port")) return false;
     if(!press("connect-board") || !wait_json(bridge.state, "$.board_known", "1")) return false;
-    if(!press("back") || current != UI_BOARD_SETUP) return false;
     /* A periodic scan may still be completing, so wait before requesting the check. */
     if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("check-position")) return false;
     if(!wait_json(bridge.state, "$.ready", "1") || !press("verify-pieces") || !press("start-game")) return false;
@@ -1011,6 +987,12 @@ bool scb_ui_service_test(void) {
     if(!press("view-position") || !wait_json(bridge.review, "$.move", "e2e4")) return false;
     if(!press("back") || current != UI_GAME) return false;
     if(!press("pause") || !wait_json(bridge.state, "$.paused", "1")) return false;
+    /* 删掉诊断页后，已开始的对局仍可通过基本连接入口断开并重新连接。 */
+    if(!press("game-connection") || current != UI_BOARD_SETUP || !config.reconnecting) return false;
+    if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("connect-board")) return false;
+    if(!wait_json(bridge.state, "$.board_connected", "0") || !wait_json(bridge.state, "$.usb_busy", "0")) return false;
+    if(!press("connect-board") || !wait_json(bridge.state, "$.board_known", "1")) return false;
+    if(!press("return-game") || current != UI_GAME || !state_flag("$.paused")) return false;
     if(!press("pause") || !wait_json(bridge.state, "$.paused", "0")) return false;
     if(!press("end") || !press("cancel-end") || !state_flag("$.active")) return false;
     if(!press("end") || !press("confirm-end")) return false;

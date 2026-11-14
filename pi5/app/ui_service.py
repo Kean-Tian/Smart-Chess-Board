@@ -18,11 +18,12 @@ import socket
 import time
 
 from game_store import GameStore
-from scb_link import ScbLink, DeviceError, format_frame
+from scb_link import ScbLink, DeviceError
 from ui_game import GameSession
 
 
 def socket_path():
+    # 本机进程间通道的文件路径，不是网络地址或 USB 设备路径。
     if os.environ.get("SCB_UI_SOCKET"):
         return Path(os.environ["SCB_UI_SOCKET"])
     base = Path(os.environ.get("XDG_RUNTIME_DIR") or Path.home() / ".local" / "share" / "scb")
@@ -57,20 +58,18 @@ class UiCore:
         self.available_ports = []
         self.last_ports = -10.0
         self.last_poll = -10.0
-        self.timing = {}
-        self.trace, self.fault, self.notice = "", "", ""
+        self.fault, self.notice = "", ""
         self.check_after = None
-        self.led_feedback = False
-        self.led_move = ""
-        self.clear_leds = False
 
     def submit(self, kind, operation):
+        # USB 请求可能等待回复，交给单独线程，主循环继续处理状态。
         if self.job:
             raise ValueError("USB operation in progress. Please wait.")
         self.job_kind = kind
         self.job = self.io.submit(operation)
 
     def handle(self, request):
+        # 接收 UI 的 JSON 命令，分发给棋盘连接或游戏状态模块。
         cmd = request.get("cmd")
         self.session.tick_clock_only()
         self.notice = ""
@@ -81,7 +80,7 @@ class UiCore:
             if not port and len(self.available_ports) == 1:
                 port = self.available_ports[0]["port"]
             if not isinstance(port, str) or not port.startswith("/dev/") or len(port) > 128 or any(ord(c) < 32 for c in port):
-                raise ValueError("Choose a USB serial port in Diagnostics")
+                raise ValueError("Choose a USB serial port in board setup")
             self.port = port
             self.store.save_board_port(port)
             self.fault = ""
@@ -100,19 +99,16 @@ class UiCore:
         elif cmd == "prepare":
             self.session.prepare(request.get("mode"), request.get("white_id"), request.get("black_id"),
                                  request.get("human", "w"), request.get("minutes"))
-            self.clear_leds = self.led_feedback
-            self.led_move = ""
-        elif cmd in {"check", "scan"}:
+        elif cmd == "check":
             if not self.link:
-                raise ValueError("Connect the board in Diagnostics first")
+                raise ValueError("Connect the board in game setup first")
             if self.job:
                 raise ValueError("USB operation in progress. Please try again shortly.")
-            if cmd == "check":
-                if self.session.game is None or self.session.active:
-                    raise ValueError("Prepare a new game first")
-                self.session.ready = self.session.verified = False
-                self.check_after = self.session.board_generation
-                self.session.message = "Checking a fresh full-board occupancy frame..."
+            if self.session.game is None or self.session.active:
+                raise ValueError("Prepare a new game first")
+            self.session.ready = self.session.verified = False
+            self.check_after = self.session.board_generation
+            self.session.message = "Checking a fresh full-board occupancy frame..."
             self.submit("poll", self.poll_board)
         elif cmd == "start":
             if self.session.active:
@@ -130,7 +126,6 @@ class UiCore:
             if not self.session.active and self.session.game_id:
                 return None
             self.session.end(request.get("result", "*"))
-            self.clear_leds = self.led_feedback
         elif cmd == "hint":
             if not self.session.active or self.session.paused or not self.session.synchronized():
                 raise ValueError("Resume and synchronize the current board before requesting a hint")
@@ -140,10 +135,6 @@ class UiCore:
             if not isinstance(move, str) or not re.fullmatch(r"[a-h][1-8][a-h][1-8][qrbn]?", move):
                 raise ValueError("Enter a UCI move such as e2e4 or e7e8q")
             self.session.commit(move, explicit=True)
-        elif cmd == "led_feedback":
-            self.led_feedback = request.get("enabled") is True
-            self.led_move = ""
-            self.clear_leds = True
         elif cmd == "history":
             return self.store.history(request.get("offset", 0))
         elif cmd == "review":
@@ -153,17 +144,18 @@ class UiCore:
         return None
 
     def poll_board(self):
+        # 只请求对局需要的整盘数据和状态；MCU 持续独立扫描。
         result = {}
         try:
             self.link.request("SCAN", timeout=0.6)
         except DeviceError as exc:
             if str(exc) != "NOT_READY":
                 raise
-        result["timing"] = fields(self.link.request("TIMING", timeout=0.6))
         result["status"] = fields(self.link.request("STATUS", timeout=0.6))
         return result
 
     def update(self):
+        # 收取 USB 任务结果和 MCU 事件，再推进游戏时钟与提示。
         now = self.now()
         if now - self.last_ports > 2:
             self.available_ports = ports()
@@ -182,7 +174,6 @@ class UiCore:
                     self.session.message = "Board connected. Waiting for a full scan."
                     self.last_poll = -10.0
                 elif kind == "poll":
-                    self.timing = result["timing"]
                     if result["status"].get("armed") == "1":
                         # This UI is manual-board only; disarm a leftover bench session.
                         self.submit("stop", lambda: self.link.request("STOP", timeout=0.6))
@@ -198,7 +189,7 @@ class UiCore:
                 self.session.connection(False)
         if self.link:
             if self.link._failure:
-                self.notice = "Board disconnected. Reconnect in Diagnostics."
+                self.notice = "Board disconnected. Reconnect in game setup."
                 old, self.link = self.link, None
                 old.close()
                 self.session.connection(False)
@@ -212,15 +203,11 @@ class UiCore:
                         if frame.kind == "BOARD":
                             raw = int(frame.payload, 16)
                             self.session.on_board(raw)
-                            if not raw:
-                                self.trace = ""
                             if self.check_after is not None and self.session.board_generation > self.check_after:
                                 self.session.check()
                                 self.check_after = None
                         elif frame.kind == "EVENT":
                             self.session.event(frame.payload)
-                        elif frame.kind == "SENSOR":
-                            self.trace = format_frame(frame)
                         elif frame.kind == "HELLO":
                             self.session.ready = False
                             if self.session.active:
@@ -238,15 +225,9 @@ class UiCore:
         self.session.tick()
         if self.session.active and not self.session.paused:
             self.session.maybe_search()
-        wanted = (self.session.computer_move or self.session.last_move) if self.session.active else ""
-        if self.clear_leds and self.link and not self.job:
-            self.clear_leds = False
-            self.submit("led", lambda: self.link.request("LED_CLEAR", timeout=0.6))
-        if self.led_feedback and self.link and not self.job and wanted and wanted != self.led_move:
-            self.led_move = wanted
-            self.submit("led", lambda: self.link.request(f"MARK {wanted[:2]} {wanted[2:4]} LEGAL", timeout=0.6))
 
     def state(self):
+        # 只返回游戏与连接状态；UI 不提供独立诊断和 LED 调试功能。
         state = self.session.state()
         age = None if self.session.board_at is None else max(0, round((self.now() - self.session.board_at) * 1000))
         state.update({"type": "state", "board_connected": self.link is not None,
@@ -254,10 +235,8 @@ class UiCore:
                       "board": f"{self.session.mask:016X}" if self.session.mask is not None and self.session.fresh() else None,
                       "board_age_ms": age, "port": self.port, "ports": self.available_ports,
                       "usb_busy": self.job is not None, "check_pending": self.check_after is not None,
-                      "frame_us": self.timing.get("frame_us"), "max_us": self.timing.get("max_us"),
-                      "debounce_us": self.timing.get("debounce_us"), "scan_misses": self.timing.get("misses"),
-                      "sensor_trace": self.trace if self.session.fresh() else "", "fault": self.fault,
-                      "led_feedback": self.led_feedback, "error": self.notice, "engine_error": self.session.hint_error})
+                      "fault": self.fault, "error": self.notice,
+                      "engine_error": self.session.hint_error})
         return state
 
     def controller_lost(self):
@@ -278,6 +257,7 @@ class UiCore:
 
 
 class Server:
+    # 一个本机控制端连接一个服务，统一管理串口和对局。
     def __init__(self, path, database=None):
         self.path = Path(path)
         if len(os.fsencode(path)) >= 100:
@@ -319,6 +299,7 @@ class Server:
         self.outgoing.clear()
 
     def run(self):
+        # 按换行拆分 JSON 请求，更新后台，并持续发送状态。
         while self.running:
             for key, _ in self.selector.select(0.005):
                 if key.fileobj is self.listener:

@@ -19,6 +19,7 @@ static void disconnect(UiBridge *b) {
     b->incoming_size = b->outgoing_size = 0;
 }
 static bool extract(UiBridge *b, const char *document, const char *path) {
+    /* 借用 SQLite 的 JSON 函数取字段；这里不读写玩家数据表。 */
     if(!b->extract || !document || !*document) return false;
     sqlite3_reset(b->extract);
     sqlite3_clear_bindings(b->extract);
@@ -53,6 +54,7 @@ bool ui_json_quote(UiBridge *b, const char *value, char *out, size_t capacity) {
     return ok;
 }
 bool ui_bridge_init(UiBridge *b, bool disabled) {
+    /* 内存数据库只解析 JSON；socket 才是连接 Python 后台的通道。 */
     memset(b, 0, sizeof(*b));
     b->fd = -1;
     b->disabled = disabled;
@@ -87,6 +89,7 @@ void ui_bridge_close(UiBridge *b) {
     b->json = NULL;
 }
 bool ui_bridge_send(UiBridge *b, const char *format, ...) {
+    /* 每条 JSON 以换行结束，先排队，实际发送由 poll() 完成。 */
     if(!b->connected) {
         snprintf(b->error, sizeof(b->error), "Game service unavailable. Start the UI with pi5/start.sh ui.");
         return false;
@@ -106,6 +109,7 @@ bool ui_bridge_send(UiBridge *b, const char *format, ...) {
     return true;
 }
 static unsigned accept_line(UiBridge *b, char *line, uint32_t now) {
+    /* 按消息类型分别缓存实时状态、历史列表和回放局面。 */
     char kind[32];
     if(!ui_json_text(b, line, "$.type", kind, sizeof(kind))) return 0;
     char *destination = NULL;
@@ -124,6 +128,7 @@ static unsigned accept_line(UiBridge *b, char *line, uint32_t now) {
     return change;
 }
 unsigned ui_bridge_poll(UiBridge *b, uint32_t now) {
+    /* 非阻塞收发：没数据就返回，让触摸和绘图继续运行。 */
     if(b->disabled || !b->extract) return 0;
     unsigned changes = 0;
     if(b->fd < 0 && (uint32_t)(now - b->last_attempt) >= 1000) {

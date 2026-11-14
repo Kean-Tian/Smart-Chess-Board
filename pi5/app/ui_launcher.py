@@ -12,6 +12,7 @@ from ui_service import socket_path
 
 
 def main():
+    # 启动入口：保证 C 界面和 Python 后台使用同一数据库及 socket。
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -37,6 +38,7 @@ def main():
     ui = None
     try:
         with log_path.open("a") as log:
+            # 先启动后台并等待可连接，再打开图形界面。
             service = subprocess.Popen([sys.executable, "-B", str(Path(__file__).with_name("ui_service.py")),
                                         "--socket", str(sock), "--database", str(path)],
                                        env=env, stdout=log, stderr=log)
@@ -62,6 +64,7 @@ def main():
     except KeyboardInterrupt:
         return 130
     finally:
+        # 界面退出后收尾后台，让未结束对局和串口得到正常处理。
         if ui and ui.poll() is None:
             ui.terminate()
             try:

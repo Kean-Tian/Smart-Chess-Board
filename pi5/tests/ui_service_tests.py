@@ -204,7 +204,8 @@ class ServiceTests(unittest.TestCase):
                     self.assertEqual(connection.execute("SELECT status FROM games").fetchone()[0], "completed")
                     self.assertEqual(connection.execute("SELECT count(*) FROM players").fetchone()[0], 2)
                     connection.close()
-                    self.assertFalse(any(cmd.split()[0] in {"ARM", "MOVE", "GOTO", "JOG", "MAGNET"} for cmd in mcu.commands))
+                    self.assertFalse(any(cmd.split()[0] in {"ARM", "MOVE", "GOTO", "JOG", "MAGNET",
+                                                           "TIMING", "MARK", "LED_CLEAR"} for cmd in mcu.commands))
                 finally:
                     if ui and ui.poll() is None:
                         ui.kill()

@@ -31,15 +31,6 @@
         "disabled": false
       },
       {
-        "id": "diagnostics",
-        "target": "diagnostics",
-        "x": 368,
-        "y": 544,
-        "w": 320,
-        "h": 244,
-        "disabled": false
-      },
-      {
         "id": "continue-game",
         "target": "game",
         "x": 32,
@@ -136,17 +127,6 @@
         "disabled": false
       }
     ],
-    "diagnostics": [
-      {
-        "id": "back",
-        "target": "home",
-        "x": 32,
-        "y": 88,
-        "w": 80,
-        "h": 80,
-        "disabled": false
-      }
-    ],
     "player-editor": [
       {
         "id": "back",
@@ -175,15 +155,6 @@
         "y": 88,
         "w": 80,
         "h": 80,
-        "disabled": false
-      },
-      {
-        "id": "board-diagnostics",
-        "target": "diagnostics",
-        "x": 368,
-        "y": 988,
-        "w": 320,
-        "h": 72,
         "disabled": false
       },
       {
@@ -220,7 +191,16 @@
         "target": "review",
         "x": 32,
         "y": 1140,
-        "w": 656,
+        "w": 320,
+        "h": 80,
+        "disabled": true
+      },
+      {
+        "id": "game-connection",
+        "target": "board-setup",
+        "x": 368,
+        "y": 1140,
+        "w": 320,
         "h": 80,
         "disabled": true
       }

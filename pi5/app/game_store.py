@@ -7,6 +7,7 @@ SCHEMA = Path(__file__).resolve().parents[1] / "storage" / "schema.sql"
 
 
 def database_path(value=None):
+    # 实际数据放在代码目录外，更新程序时可以保留玩家和对局。
     if value or os.environ.get("SCB_PLAYER_DB"):
         return Path(value or os.environ["SCB_PLAYER_DB"]).expanduser()
     base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
@@ -15,6 +16,7 @@ def database_path(value=None):
 
 class GameStore:
     def __init__(self, path=None):
+        # 打开本地 SQLite 文件，并启用外键和共享表结构。
         self.path = database_path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.path, timeout=0.25)
@@ -37,17 +39,20 @@ class GameStore:
         return dict(self.db.execute("SELECT port FROM board_settings WHERE id=1").fetchone())
 
     def save_board_port(self, port):
+        # 只记住串口，不自动连接；旧旋转设置归零且不再使用。
         # Keep the old schema column for compatibility, but never apply rotations.
         with self.db:
             self.db.execute("UPDATE board_settings SET port=?,orientation=0 WHERE id=1", (port,))
 
     def player(self, player_id):
+        # 开始游戏前确认玩家 ID 确实存在，不能只相信界面传来的值。
         row = self.db.execute("SELECT id,name FROM players WHERE id=?", (player_id,)).fetchone()
         if row is None:
             raise ValueError("Choose a saved player")
         return dict(row)
 
     def start(self, white, black, mode, minutes, fen, clocks):
+        # 正式开始才创建对局；保存双方当时的名字，返回新对局 ID。
         with self.db:
             cur = self.db.execute("""INSERT INTO games
                 (white_player_id,black_player_id,white_name,black_name,mode,minutes,
@@ -58,6 +63,7 @@ class GameStore:
         return cur.lastrowid
 
     def move(self, game_id, ply, uci, fen, clocks, result="*", reason=""):
+        # 插入走法和更新当前局面必须一起成功；with 负责提交或回滚。
         with self.db:
             row = self.db.execute("SELECT status FROM games WHERE id=?", (game_id,)).fetchone()
             if row is None or row[0] != "active":
@@ -69,6 +75,7 @@ class GameStore:
                 (fen, *clocks, result, reason, "completed" if result != "*" else "active", result, game_id))
 
     def checkpoint(self, game_id, clocks, status, reason="", result="*"):
+        # 暂停、继续和结束时保存状态与时钟，不必每次界面刷新都写盘。
         if status not in {"active", "paused", "completed", "interrupted"}:
             raise ValueError("Invalid game state")
         with self.db:
@@ -77,11 +84,13 @@ class GameStore:
                 WHERE id=?""", (*clocks, status, reason, result, status, game_id))
 
     def interrupt_previous(self):
+        # 重启后将上次未结束的对局标为中断，保留历史但不自动续局。
         with self.db:
             self.db.execute("""UPDATE games SET status='interrupted',reason='Service stopped before this game ended',
                 ended_at=CURRENT_TIMESTAMP WHERE status IN ('active','paused')""")
 
     def history(self, offset=0):
+        # 最新对局在前，每次取四条，供 History 页面分页显示。
         if not isinstance(offset, int) or offset < 0:
             raise ValueError("Invalid history page")
         total = self.db.execute("SELECT count(*) FROM games").fetchone()[0]
@@ -91,6 +100,7 @@ class GameStore:
         return {"type": "history", "offset": offset, "total": total, "games": [dict(r) for r in rows]}
 
     def review(self, game_id, ply):
+        # 第 0 步读初始 FEN，其余读已保存的每步 FEN；不操作实体棋盘。
         if not isinstance(ply, int) or ply < 0:
             raise ValueError("Invalid review position")
         game = self.db.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()

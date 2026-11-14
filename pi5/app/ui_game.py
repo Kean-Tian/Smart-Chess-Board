@@ -9,6 +9,7 @@ START_OCCUPANCY = 0xFFFF00000000FFFF
 
 
 class GameSession:
+    # 保存真实游戏状态；界面切页不会销毁这份状态。
     def __init__(self, store, *, now=time.monotonic, game_factory=Game, engine_factory=Stockfish):
         self.store, self.now = store, now
         self.game_factory, self.engine_factory = game_factory, engine_factory
@@ -46,12 +47,15 @@ class GameSession:
         self.hint_error = ""
 
     def fresh(self):
+        # 只有连接正常且两秒内收到棋盘数据，才把占用当作可用实况。
         return self.connected and self.board_at is not None and self.now() - self.board_at < 2.0
 
     def synchronized(self):
+        # 比较传感器占用与逻辑局面；Hall 传感器不能区分棋子种类。
         return self.fresh() and self.game is not None and self.mask == occupancy(fen_board(self.game.fen()))
 
     def tick(self):
+        # 按实际经过时间扣当前一方的时钟，并检查失联与搜索结果。
         now = self.now()
         elapsed = max(0.0, now - self.last_tick) * 1000
         self.last_tick = now
@@ -77,6 +81,7 @@ class GameSession:
                 self.pause("Board disconnected. Reconnect and restore the current position.")
 
     def prepare(self, mode, white_id, black_id, human, minutes):
+        # 检查设置和玩家，准备开局；这里只准备，不创建对局记录。
         if self.active:
             raise ValueError("End the current game before preparing another")
         if mode not in {"pvp", "pvc", "coach"} or human not in {"w", "b"} or minutes not in {0, 5, 10}:
@@ -108,6 +113,7 @@ class GameSession:
         self.message = "Arrange the standard starting position, then check the board."
 
     def check(self):
+        # 开局检查要求新鲜整盘数据与标准初始占用一致。
         if self.game is None or self.active:
             raise ValueError("Prepare a new game first")
         self.verified = False
@@ -117,6 +123,7 @@ class GameSession:
         return self.ready
 
     def start(self, verified):
+        # 后台重新核对条件，保存对局记录后才启动时钟。
         if self.game is None or self.game.move_history or self.active or not self.ready or not self.fresh() or self.mask != START_OCCUPANCY:
             raise ValueError("Check a fresh, matching starting board first")
         if verified is not True:
@@ -131,6 +138,7 @@ class GameSession:
         self.maybe_search()
 
     def on_board(self, mask):
+        # 收到整盘占用后更新时间，并尝试确认等待中的完整走法。
         self.mask = mask
         self.board_at = self.now()
         self.board_generation += 1
@@ -158,6 +166,7 @@ class GameSession:
             self.message = "Piece lifted. Complete the move on the board."
 
     def commit(self, move, *, explicit=False):
+        # 先查棋规与占用；数据库保存成功后才替换正式局面。
         self.tick_clock_only()
         accepted_at = self.last_tick
         if not self.active or self.paused or not self.fresh() or self.restore:
@@ -229,6 +238,7 @@ class GameSession:
         self.last_tick = now
 
     def pause(self, reason="Game paused."):
+        # 停止游戏计时并保存状态；传感器通信仍继续。
         if not self.active:
             raise ValueError("There is no active game")
         if not self.paused:
@@ -237,6 +247,7 @@ class GameSession:
         self.message = reason
 
     def resume(self):
+        # 实体棋盘恢复到当前逻辑局面后才能继续。
         if not self.active or not self.paused or not self.synchronized():
             raise ValueError("Restore the current position and reconnect before resuming")
         if self.minutes and any(value <= 0 for value in self.clocks):
@@ -250,6 +261,7 @@ class GameSession:
         self.maybe_search()
 
     def end(self, result="*"):
+        # 保存结束状态；* 表示未指定结果，不是和棋。
         if not self.active:
             raise ValueError("There is no active game")
         if result not in {"*", "1-0", "0-1", "1/2-1/2"}:
@@ -269,6 +281,7 @@ class GameSession:
         return self.engine.best_move(fen, legal, 2000, history)
 
     def maybe_search(self, force_hint=False):
+        # 将电脑走法或提示计算交给工作线程，避免阻塞通信。
         if not self.active or self.paused or not self.synchronized() or self.search:
             return
         if self.hint_error and not force_hint:
@@ -288,6 +301,7 @@ class GameSession:
         self.message = "Stockfish is thinking. Board input remains active."
 
     def poll_search(self):
+        # 只采用仍对应当前对局和局面的结果，丢弃过期搜索。
         if not self.search or not self.search.done() or self.paused:
             return
         future, key, role = self.search, self.search_key, self.search_role
@@ -316,6 +330,7 @@ class GameSession:
             self.message = "Hint ready. Choose your own move on the board."
 
     def state(self):
+        # 整理 UI 需要的状态；这里返回数据，不直接修改界面控件。
         return {"active": self.active, "paused": self.paused, "ready": self.ready and self.fresh(),
                 "verified": self.verified, "synced": self.synchronized(), "restore": self.restore,
                 "game_id": self.game_id, "mode": self.mode, "minutes": self.minutes,

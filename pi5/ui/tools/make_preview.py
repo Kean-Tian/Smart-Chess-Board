@@ -6,16 +6,15 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 SCREENS = {
-    "home": ("主菜单", "新游戏、真实 SQLite 玩家库、已保存对局和实时诊断。"),
+    "home": ("主菜单", "新游戏、真实 SQLite 玩家库和已保存对局；Diagnostics 保持普通卡片样式，点击不跳转。"),
     "setup": ("新游戏设置", "选择双人、人机或本地 Stockfish 指导；选择真实玩家、执棋方和时间。"),
     "profiles": ("玩家库", "SQLite 玩家列表初始为空；创建、重命名、选择和删除均永久保存。"),
     "player-editor": ("创建玩家", "输入名称并保存到数据库，支持屏幕键盘、实体键盘及粘贴。"),
-    "board-setup": ("摆棋和检查", "图中为目标初始布局；只有真实占用匹配且手动确认棋子类型和方向后才能开始。"),
+    "board-setup": ("摆棋和检查", "选择并连接棋盘，检查目标初始布局；真实占用匹配且人工确认棋子后才能开始。"),
     "game": ("实时对局", "显示后台提供的双方时钟、回合、走法和提示。离线截图没有虚构的对局数据。"),
     "move-editor": ("确认特殊走法", "无法从占用唯一识别的走法可手动输入 UCI，仍需通过合法性和实体占用检查。"),
     "history": ("历史记录", "从 SQLite 读取真实对局，包括未完成的局和实际结果。"),
     "review": ("真实棋谱回放", "读取保存的每步局面；没有记录时不会生成示例棋谱，也不会移动实体棋子。"),
-    "diagnostics": ("实时棋盘诊断", "选择串口，按固件坐标查看真实占用、扫描时间和 MUX 输入信息。"),
 }
 
 TEMPLATE = '''<!doctype html>
@@ -29,7 +28,7 @@ aside{padding-top:12px}nav{display:grid;gap:6px}button{font:inherit;cursor:point
 .details{font-size:14px;line-height:1.8}.details h2{font-size:20px;line-height:1.4;margin:0 0 12px}.details p{color:#62675d;margin:0 0 20px}.details dl{border-top:1px solid #d3d2c9;padding-top:18px}.details dt{font-size:11px;color:#777c70;text-transform:uppercase;letter-spacing:.08em;margin-top:14px}.details dd{margin:4px 0 0}.tag{display:inline-block;background:#e4dcc9;padding:5px 9px;border-radius:5px;font-size:12px}.note{font-size:12px!important;margin-top:18px!important}.pager{display:flex;justify-content:center;gap:10px;margin-top:15px}.pager button{border:1px solid #67715f;background:transparent;border-radius:8px;padding:9px 14px;color:#f0f2e9}.pager span{align-self:center;font-size:12px;color:#c0c8b7}
 @media(max-width:980px){main{grid-template-columns:210px 1fr}.details{grid-column:1/-1;max-width:650px}.details dl{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}.details dd{margin-bottom:8px}}
 @media(max-width:620px){header{padding:24px 18px}main{display:flex;flex-direction:column;padding:0 18px 28px;gap:18px}aside{width:100%;padding:0}nav{display:flex;overflow-x:auto;gap:5px;padding-bottom:5px}nav button{white-space:nowrap;padding:10px 12px}.device{max-width:400px;align-self:center}.details{width:100%}h1{font-size:25px}}
-</style></head><body><header><small>SMART CHESS BOARD / TEAM 24</small><h1>Pi 5 触摸界面设计</h1><p>5-inch Touch Display 2 · 720 × 1280 竖屏 · 原生 LVGL 渲染<br>点击屏幕按钮或左侧页面名称查看流程；这是离线布局预览；真实走棋、保存和诊断请使用 Pi 上的原生程序。</p></header>
+</style></head><body><header><small>SMART CHESS BOARD / TEAM 24</small><h1>Pi 5 触摸界面设计</h1><p>5-inch Touch Display 2 · 720 × 1280 竖屏 · 原生 LVGL 渲染<br>点击屏幕按钮或左侧页面名称查看流程；这是离线布局预览；真实走棋和保存请使用 Pi 上的原生程序。</p></header>
 <main><aside><nav aria-label="界面页面">__NAV__</nav></aside>
 <section class="device" aria-label="原生触摸界面预览"><div class="viewport"><img id="screen" alt=""><div id="touches"></div></div><div class="pager"><button id="prev" aria-label="上一页">←</button><span id="count"></span><button id="next" aria-label="下一页">→</button></div></section>
 <section class="details"><span class="tag">Native UI + board service</span><h2 id="name" style="margin-top:16px" aria-live="polite"></h2><p id="description"></p><dl><div><dt>运行平台</dt><dd>Raspberry Pi 5</dd></div><div><dt>显示与触摸</dt><dd>DSI · GPIO 供电</dd></div><div><dt>原生画布</dt><dd>720 × 1280</dd></div><div><dt>界面程序</dt><dd>C / LVGL 9.3.0</dd></div></dl><p class="note">图像由同目录 C 程序使用空的临时数据库渲染。网页只展示版式；真实玩家和棋谱读写 SQLite，数据不会写在 HTML 中。原生程序通过本机服务接收真实棋盘状态。离线预览不启动服务、不生成对局。</p></section></main>
@@ -58,7 +57,7 @@ def main():
     page = page.replace("__MAPS__", json.dumps(maps))
     (args.destination / "index.html").write_text(page)
     (args.destination / "hotspots.json").write_text(json.dumps(maps, indent=2) + "\n")
-    names = ["home", "profiles", "player-editor", "setup", "history", "diagnostics"]
+    names = ["home", "profiles", "player-editor", "setup", "history", "board-setup"]
     sheet = Image.new("RGB", (1080, 1368), "#eeece6")
     draw = ImageDraw.Draw(sheet)
     try:

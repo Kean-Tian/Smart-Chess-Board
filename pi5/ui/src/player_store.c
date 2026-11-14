@@ -31,9 +31,11 @@ static bool exec_sql(PlayerStore *s, const char *sql) {
     return sqlite3_exec(s->db, sql, NULL, NULL, NULL) == SQLITE_OK || db_error(s);
 }
 static bool prepare(PlayerStore *s, sqlite3_stmt **stmt, const char *sql) {
+    /* 先准备 SQL，再绑定参数，避免把玩家名字拼接成 SQL 代码。 */
     return ready(s) && (sqlite3_prepare_v2(s->db, sql, -1, stmt, NULL) == SQLITE_OK || db_error(s));
 }
 static bool finish_write(PlayerStore *s, sqlite3_stmt *stmt, bool require_row) {
+    /* 执行写入并释放语句；需要时确认确实修改了一条玩家记录。 */
     bool ok = sqlite3_step(stmt) == SQLITE_DONE;
     if(!ok) db_error(s);
     else if(require_row && sqlite3_changes(s->db) != 1)
@@ -59,6 +61,7 @@ static bool make_parent(PlayerStore *s) {
     return true;
 }
 bool player_store_open(PlayerStore *s, const char *path) {
+    /* 优先使用指定路径，否则打开用户目录中的持久数据库。 */
     memset(s, 0, sizeof(*s));
     if(!path || !*path) path = getenv("SCB_PLAYER_DB");
     if(path && *path) {
@@ -79,6 +82,7 @@ bool player_store_open(PlayerStore *s, const char *path) {
         player_store_close(s);
         return false;
     }
+    /* 其他连接正在写入时短暂等待；仍被占用就返回错误。 */
     sqlite3_busy_timeout(s->db, 250);
     sqlite3_stmt *stmt = NULL;
     if(!prepare(s, &stmt, "PRAGMA user_version")) goto error;
@@ -87,6 +91,7 @@ bool player_store_open(PlayerStore *s, const char *path) {
     sqlite3_finalize(stmt);
     if(version < 0) { db_error(s); goto error; }
     if(version > 2) { fail(s, "This player database needs a newer application version."); goto error; }
+    /* 使用与 Python 共用的表结构；已有表和已有玩家不会被清空。 */
     if(!exec_sql(s, scb_schema_sql)) goto error;
     return true;
 error:
@@ -99,6 +104,7 @@ void player_store_close(PlayerStore *s) {
     s->db = NULL;
 }
 bool player_store_page(PlayerStore *s, int offset, ScbPlayer *rows, int *count, int *total) {
+    /* 先查询总人数，再按名字取一页；offset 是跳过的记录数。 */
     *count = *total = 0;
     sqlite3_stmt *stmt = NULL;
     if(offset < 0 || !prepare(s, &stmt, "SELECT count(*) FROM players")) return false;
@@ -120,6 +126,7 @@ bool player_store_page(PlayerStore *s, int offset, ScbPlayer *rows, int *count, 
     return rc == SQLITE_DONE;
 }
 bool player_store_selected(PlayerStore *s, ScbPlayer *player) {
+    /* 将当前选择与玩家表关联；没有选择时返回空玩家。 */
     memset(player, 0, sizeof(*player));
     sqlite3_stmt *stmt = NULL;
     if(!prepare(s, &stmt, "SELECT p.id,p.name FROM ui_state u LEFT JOIN players p ON p.id=u.selected_player_id WHERE u.id=1")) return false;
@@ -132,6 +139,7 @@ bool player_store_selected(PlayerStore *s, ScbPlayer *player) {
     return rc == SQLITE_ROW;
 }
 bool player_store_select(PlayerStore *s, int64_t id) {
+    /* 保存的是玩家 ID；id 为 0 时把选择设为 NULL。 */
     sqlite3_stmt *stmt = NULL;
     if(!prepare(s, &stmt, "UPDATE ui_state SET selected_player_id=? WHERE id=1")) return false;
     if(id) sqlite3_bind_int64(stmt, 1, id);
@@ -139,6 +147,7 @@ bool player_store_select(PlayerStore *s, int64_t id) {
     return finish_write(s, stmt, true);
 }
 bool player_store_get(PlayerStore *s, int64_t id, ScbPlayer *player) {
+    /* 按固定 ID 读取玩家，改名不会改变这个身份编号。 */
     memset(player, 0, sizeof(*player));
     sqlite3_stmt *stmt = NULL;
     if(!prepare(s, &stmt, "SELECT id,name FROM players WHERE id=?")) return false;
@@ -152,6 +161,7 @@ bool player_store_get(PlayerStore *s, int64_t id, ScbPlayer *player) {
     return rc == SQLITE_ROW;
 }
 static bool normalize_name(PlayerStore *s, const char *name, char normalized[SCB_PLAYER_NAME_MAX + 1]) {
+    /* 去掉首尾空格，检查长度和当前字体可显示的字符。 */
     if(!name) return fail(s, "Enter a player name.");
     while(*name == ' ') ++name;
     size_t n = strlen(name);
@@ -168,6 +178,7 @@ static bool normalize_name(PlayerStore *s, const char *name, char normalized[SCB
     return true;
 }
 bool player_store_create(PlayerStore *s, const char *name) {
+    /* 新增玩家并自动选中：两项放在同一事务里，失败就一起撤销。 */
     char normalized[SCB_PLAYER_NAME_MAX + 1];
     if(!ready(s) || !normalize_name(s, name, normalized) || !exec_sql(s, "BEGIN IMMEDIATE")) return false;
     sqlite3_stmt *stmt = NULL;
@@ -182,6 +193,7 @@ bool player_store_create(PlayerStore *s, const char *name) {
     return ok;
 }
 bool player_store_rename(PlayerStore *s, int64_t id, const char *name) {
+    /* 只修改名字和更新时间，保留玩家 ID。 */
     char normalized[SCB_PLAYER_NAME_MAX + 1];
     if(!ready(s) || !normalize_name(s, name, normalized)) return false;
     sqlite3_stmt *stmt = NULL;
@@ -191,6 +203,7 @@ bool player_store_rename(PlayerStore *s, int64_t id, const char *name) {
     return finish_write(s, stmt, true);
 }
 bool player_store_delete(PlayerStore *s, int64_t id) {
+    /* 外键负责清空当前选择和对局中的玩家关联，历史名字仍保留。 */
     sqlite3_stmt *stmt = NULL;
     if(!prepare(s, &stmt, "DELETE FROM players WHERE id=?")) return false;
     sqlite3_bind_int64(stmt, 1, id);

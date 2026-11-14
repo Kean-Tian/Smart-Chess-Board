@@ -36,6 +36,7 @@ static uint32_t tick_ms(void) {
     return (uint32_t)((uint64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000);
 }
 static void flush_pixels(lv_display_t *d, const lv_area_t *area, uint8_t *pixels) {
+    /* LVGL 画好后复制到像素画布，稍后由 SDL 显示到窗口。 */
     int width = area->x2 - area->x1 + 1;
     for(int y = area->y1; y <= area->y2; ++y)
         memcpy(framebuffer + y * SCB_UI_WIDTH + area->x1,
@@ -65,6 +66,7 @@ static void read_pointer(lv_indev_t *input, lv_indev_data_t *data) {
     data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 static void handle_pointer_event(lv_indev_t *input, const SDL_Event *event) {
+    /* 把鼠标或触摸转换成 LVGL 的坐标、按下和松开状态。 */
     if(event->type == SDL_MOUSEMOTION) {
         /* SDL_RenderSetLogicalSize already maps mouse events to UI coordinates. */
         pointer_x = event->motion.x;
@@ -143,8 +145,7 @@ static bool test_window_input(SDL_Window *window, SDL_Renderer *renderer, lv_ind
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board") ||
                !test_pointer_click(window, renderer, input, 192, 666, touch != 0, "History is not loaded") ||
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board") ||
-               !test_pointer_click(window, renderer, input, 528, 666, touch != 0, "Occupancy unavailable / no fresh scan") ||
-               !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board")) return false;
+               !test_pointer_click(window, renderer, input, 528, 666, touch != 0, "Smart Chess Board")) return false;
         }
     }
     puts("PASS: SDL mouse/touch quick clicks, player forms and back navigation at three window sizes.");
@@ -164,6 +165,7 @@ static int run_window(bool fullscreen, bool input_test) {
     if(!window) { fprintf(stderr, "%s\n", SDL_GetError()); SDL_Quit(); return 1; }
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if(!renderer) { SDL_DestroyWindow(window); SDL_Quit(); return 1; }
+    /* 按 720×1280 逻辑画布缩放显示，并让输入坐标使用同一套尺度。 */
     SDL_RenderSetLogicalSize(renderer, SCB_UI_WIDTH, SCB_UI_HEIGHT);
     SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING, SCB_UI_WIDTH, SCB_UI_HEIGHT);
@@ -179,6 +181,7 @@ static int run_window(bool fullscreen, bool input_test) {
     SDL_StartTextInput();
     bool running = true;
     while(running) {
+        /* 一轮依次处理输入、后台消息和绘图，不在这里等待 Stockfish。 */
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
             if(event.type == SDL_WINDOWEVENT) pixels_dirty = true;
@@ -236,6 +239,7 @@ int main(int argc, char **argv) {
         database = test_path;
     }
     atexit(cleanup);
+    /* 初始化绘图库、时间基准、显示尺寸和绘图内存。 */
     lv_init(); lv_tick_set_cb(tick_ms);
     display = lv_display_create(SCB_UI_WIDTH, SCB_UI_HEIGHT);
     lv_display_set_color_format(display, LV_COLOR_FORMAT_XRGB8888);
