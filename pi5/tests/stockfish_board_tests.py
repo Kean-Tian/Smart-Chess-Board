@@ -38,16 +38,21 @@ class BoardEngineTests(unittest.TestCase):
             manager.maybe_computer_turn()
             self.assertEqual(game.fen(), before)
             self.assertEqual(manager.computer_move, "e7e5")
-            self.assertIn("MARK e7 e5 LEGAL", link.commands)
+            self.assertEqual(link.commands[-2:], ["LED_CLEAR", "LED e7 0 0 20"])
+            # BOARD occupancy alone can reveal a lift even if EVENT LIFT is lost.
+            manager.on_board(occupancy(fen_board(before)) & ~(1 << 52))
+            self.assertEqual(link.commands[-1], "LED e5 0 20 0")
+            self.assertEqual(game.fen(), before)
             self.assertFalse(any(cmd.startswith(("ARM", "MOVE", "GOTO")) for cmd in link.commands))
             manager.on_board(expected_occupancy(game.fen(), "e7e5"))
             self.assertTrue(manager.try_move("e7e5"))
             self.assertEqual(game.move_history, ["e2e4", "e7e5"])
             self.assertEqual(game.fen().split()[1], "w")
+            self.assertIsNone(manager.guidance.move)
 
     def test_wrong_computer_move_requires_restoring_board(self):
         with Game() as game:
-            manager, _ = self.start_game(game)
+            manager, link = self.start_game(game)
             manager.maybe_computer_turn()
             manager._search.result(timeout=1)
             manager.maybe_computer_turn()
@@ -56,9 +61,28 @@ class BoardEngineTests(unittest.TestCase):
             self.assertFalse(manager.try_move("e7e6"))
             self.assertEqual(game.fen(), before)
             self.assertTrue(manager.restore_required)
+            self.assertIsNone(manager.guidance.move)
             manager.on_board(occupancy(fen_board(game.fen())))
             self.assertFalse(manager.restore_required)
             self.assertEqual(manager.computer_move, "e7e5")
+            self.assertEqual(link.commands[-2:], ["LED_CLEAR", "LED e7 0 0 20"])
+
+    def test_waiting_for_engine_move_shows_destination_without_further_board_events(self):
+        with Game() as game:
+            manager, link = self.start_game(game)
+            now = [0.0]
+            manager.guidance._clock = lambda: now[0]
+            manager.maybe_computer_turn()
+            manager._search.result(timeout=1)
+            manager.maybe_computer_turn()
+            before = game.fen()
+            now[0] = 5.0
+            manager.update_guidance()
+            self.assertEqual(link.commands[-1], "LED e5 0 20 0")
+            self.assertEqual(game.fen(), before)
+            now[0] = 5.5
+            manager.update_guidance()
+            self.assertEqual(link.commands[-1], "LED e5 0 0 0")
 
     def test_search_does_not_block_sensor_events_or_use_live_rules_in_worker(self):
         ready, release = threading.Event(), threading.Event()

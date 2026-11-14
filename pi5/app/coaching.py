@@ -39,13 +39,18 @@ def configure_coaching(args):
 
 
 class CoachingSession:
-    def __init__(self, game, settings, coach_factory, report=print):
+    def __init__(self, game, settings, coach_factory, report=print, on_hint=None):
         self.game, self.report = game, report
         self.enabled = dict(settings)
         self.coach_factory = coach_factory
         self._coach = None
         self._resources = ExitStack()
         self._last_position = None
+        self.on_hint = on_hint
+
+    def _notify_hint(self, advice):
+        if self.on_hint:
+            self.on_hint(advice)
 
     def show_settings(self):
         self.report("AI Coaching: " + ", ".join(
@@ -55,13 +60,18 @@ class CoachingSession:
         fen = self.game.fen()
         side = fen.split()[1]
         if not self.enabled[side]:
+            self._notify_hint(None)
             if force:
                 self.report(f"{SIDES[side]} coaching is OFF. Use coach {SIDES[side].lower()} on to enable it.")
             return None
         status = self.game.status()
-        if (status and status != "Check.") or (not force and self._last_position == fen):
+        if status and status != "Check.":
+            self._notify_hint(None)
+            return None
+        if not force and self._last_position == fen:
             return None
         self._last_position = fen
+        self._notify_hint(None)
         try:
             if self._coach is None:
                 self._coach = self._resources.enter_context(self.coach_factory())
@@ -75,6 +85,7 @@ class CoachingSession:
             self.report("Both players can continue. Enter hint to retry on an enabled turn.")
             return None
         self.report(f"AI Coaching [{SIDES[side]}] > {advice.move}: {advice.hint}")
+        self._notify_hint(advice)
         return advice
 
     def handle_command(self, line):
@@ -90,8 +101,11 @@ class CoachingSession:
                 side = parts[1][0]
                 self.enabled[side] = parts[2] == "on"
                 self.show_settings()
-                if self.game.fen().split()[1] == side and self.enabled[side]:
-                    self.show_hint(force=True)
+                if self.game.fen().split()[1] == side:
+                    if self.enabled[side]:
+                        self.show_hint(force=True)
+                    else:
+                        self._notify_hint(None)
             else:
                 self.report("Use coach white on/off, coach black on/off, coach, or hint.")
             return True

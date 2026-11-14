@@ -7,6 +7,7 @@ from opponents import add_opponent_arguments, configure_api_key
 from stockfish_engine import EngineError
 from scb_link import DeviceError
 from coaching import add_coaching_arguments
+from move_guidance import add_led_hint_arguments
 
 
 # Show the mode menu and return the selected opponent or coaching mode.
@@ -46,6 +47,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Choose Local Mode or OpenRouter AI Mode")
     add_opponent_arguments(parser, default=None)
     add_coaching_arguments(parser)
+    add_led_hint_arguments(parser)
     parser.add_argument("--board", action="store_true", help="Play using the ESP32 physical board")
     parser.add_argument("--port", default="/dev/ttyUSB0")
     parser.add_argument("--set-api-key", action="store_true", help="Save or replace the locally remembered OpenRouter key")
