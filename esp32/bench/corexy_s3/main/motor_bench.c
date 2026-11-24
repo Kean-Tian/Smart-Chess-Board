@@ -40,7 +40,7 @@ void scb_motor_bench_init(ScbMotorBench *b, ScbMotorIo io, ScbMotorPins pins,
     /* Set safe outputs even while calibration is deliberately absent. */
     b->motor.io = io; b->motor.pins = pins;
     stop(b, "STARTUP", false);
-    emit(b, "HELLO SCB_COREXY_S2_BENCH 1");
+    emit(b, "HELLO SCB_COREXY_S3_BENCH 1");
 }
 static bool watchdog(ScbMotorBench *b, int64_t now) {
     if (b->motor.enabled && (!b->ping_seen || now < b->last_ping_us ||

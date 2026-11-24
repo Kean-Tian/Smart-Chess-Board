@@ -42,6 +42,15 @@ int main(void) {
     CHECK(player_store_open(&s, path));
     CHECK(player_store_selected(&s, &selected) && selected.id == first && !strcmp(selected.name, "O'Neil"));
     CHECK(player_store_page(&s, 0, rows, &count, &total) && total == 2);
+    ScbPlayerStats stats;
+    CHECK(player_store_stats(&s, first, &stats) && stats.completed == 0);
+    CHECK(sqlite3_exec(s.db, "INSERT INTO games(white_player_id,black_player_id,white_name,black_name,mode,minutes,initial_fen,current_fen,status,result) "
+        "SELECT id,NULL,name,'Stockfish','pvc',0,'fixture','fixture','completed','1-0' FROM players WHERE name='O''Neil';"
+        "INSERT INTO games(white_player_id,white_name,black_name,mode,minutes,initial_fen,current_fen,status) "
+        "SELECT id,name,'Other','pvp',0,'fixture','fixture','interrupted' FROM players WHERE name='O''Neil';", NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(player_store_stats(&s, first, &stats) && stats.completed == 1 && stats.wins == 1 && stats.losses == 0 && stats.draws == 0);
+    CHECK(player_store_rename(&s, first, "Same identity"));
+    CHECK(player_store_stats(&s, first, &stats) && stats.completed == 1);
     CHECK(!strcmp(rows[0].name, "Name');--"));
     for(int i = 0; i < 7; ++i) {
         char name[25];

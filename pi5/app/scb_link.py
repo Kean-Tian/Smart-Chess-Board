@@ -7,7 +7,7 @@ import select
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class Frame:
     kind: str
     request_id: int | None
     payload: str
+    received_at: float = field(default_factory=time.monotonic, compare=False, repr=False)
 
 
 # Decode one MCU protocol line into a reply or an unsolicited event.
@@ -23,7 +24,7 @@ def parse_frame(line: str) -> Frame:
     if not parts:
         raise ValueError("Empty frame")
     kind = parts[0]
-    if kind in {"ACK", "ERR", "DONE", "STATUS", "TIMING", "PLATFORM"}:
+    if kind in {"ACK", "ERR", "DONE", "STATUS", "TIMING", "PLATFORM", "SNAPSHOT"}:
         if len(parts) < 3 or not parts[1].isdigit():
             raise ValueError("Malformed reply")
         return Frame(kind, int(parts[1]), parts[2])
@@ -156,10 +157,10 @@ class ScbLink:
 
     @classmethod
     # Open the USB-UART port at 115200 baud and allow reset transients to settle.
-    def open(cls, port="/dev/ttyUSB0", *, exclusive=False):
+    def open(cls, port="/dev/ttyACM0", *, exclusive=False):
         import serial  # pyserial is required only for a real connection.
-        # Saola USB-UART DTR/RTS control EN/GPIO0. Set inactive states before
-        # opening; allow any driver-generated reset transient to settle.
+        # Native S3 USB Serial/JTAG uses GPIO19/20. Keep control lines
+        # inactive before opening and allow enumeration/reset transients to settle.
         device = serial.Serial(baudrate=115200, timeout=0.1, write_timeout=1)
         if exclusive:
             device.exclusive = True
@@ -272,7 +273,7 @@ class ScbLink:
                 frame = pending.get(timeout=remaining)
                 if frame.kind == "ERR":
                     raise DeviceError(frame.payload)
-                if frame.kind == "DONE" or (not wait_done and frame.kind in {"ACK", "STATUS", "TIMING", "PLATFORM"}):
+                if frame.kind == "DONE" or (not wait_done and frame.kind in {"ACK", "STATUS", "TIMING", "PLATFORM", "SNAPSHOT"}):
                     return frame
         except queue.Empty as exc:
             # Never replay an uncertain movement request.
@@ -316,7 +317,7 @@ class ScbLink:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Smart Chess Board USB terminal")
-    parser.add_argument("--port", default="/dev/ttyUSB0", help="Actual serial port of the development board")
+    parser.add_argument("--port", default="/dev/ttyACM0", help="Actual serial port of the development board")
     args = parser.parse_args()
     with ScbLink.open(args.port) as link:
         print("Connected. Enter STATUS, SCAN, RAW, INPUTS, or quit.")

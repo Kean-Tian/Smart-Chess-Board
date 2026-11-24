@@ -100,8 +100,8 @@ static void test_sensor_traces_use_the_accepted_frame(void) {
     f.board[7] = f.board[16] = true; /* h1 and a3. */
     ticks(&c, 1, 33);
     assert(c.row != 0); /* The scanner has already switched away from row 0. */
-    contains(&f, "SENSOR frame=2 mux=000 A0=36:0 A1=37:0 A2=38:0 inputs=00000001 occupy=0000000000010080 polarity=HIGH\n");
-    contains(&f, "mux=010 A0=36:0 A1=37:1 A2=38:0 inputs=10000000 occupy=0000000000010080 polarity=HIGH\n");
+    contains(&f, "SENSOR frame=2 mux=000 A0=6:0 A1=5:0 A2=4:0 inputs=00000001 occupy=0000000000010080 polarity=HIGH\n");
+    contains(&f, "mux=010 A0=6:0 A1=5:1 A2=4:0 inputs=10000000 occupy=0000000000010080 polarity=HIGH\n");
     assert(sensor_lines(&f) == 2); /* Only occupied rows are reported. */
 
     f.used = 0; f.output[0] = '\0';
@@ -110,7 +110,7 @@ static void test_sensor_traces_use_the_accepted_frame(void) {
     assert(c.sensor_trace_pending && sensor_lines(&f) == 0);
     ticks(&c, 73001, 160);
     assert(!c.sensor_trace_pending && sensor_lines(&f) == 2);
-    contains(&f, "mux=111 A0=36:1 A1=37:1 A2=38:1 inputs=00000001 occupy=8000000000010000 polarity=HIGH\n");
+    contains(&f, "mux=111 A0=6:1 A1=5:1 A2=4:1 inputs=00000001 occupy=8000000000010000 polarity=HIGH\n");
 
     f.used = 0; f.output[0] = '\0';
     cmd(&c, "@55 SCAN\n", 233500);
@@ -138,8 +138,8 @@ static void test_sensor_traces_use_the_accepted_frame(void) {
 }
 static void test_protocol(void) {
     ScbCore c; Fake f; init(&c, &f);
-    contains(&f, "HELLO SCB_S2_SAOLA_1 1\n");
-    cmd(&c, "@6 STATUS\n", 50); contains(&f, "polarity=HIGH\n");
+    contains(&f, "HELLO SCB_MASTER_PCB_V2_S3 1\n");
+    cmd(&c, "@6 STATUS\n", 50); contains(&f, "polarity=HIGH fault=NONE\n");
     cmd(&c, "@7 PI", 100); cmd(&c, "NG\r\n", 200); contains(&f, "ACK 7 PING\n");
     cmd(&c, "@8 LED a1 20 0 0\n", 300); assert(c.leds.pixels[0].red == 20);
     unsigned renders = f.renders;
@@ -243,36 +243,62 @@ static void test_spec_timing_and_power_defaults(void) {
         scb_core_tick(&c, 2000 + i * 1000);
     }
     assert(c.scan_frames >= 19 && c.scan_misses == 0);
-    const unsigned pins[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2,
-        1,2,3,4,5,6,7,8,SCB_PIN_UART_TX,SCB_PIN_UART_RX,SCB_PIN_MAGNET,
-        SCB_PIN_X_STEP,SCB_PIN_X_DIR,SCB_PIN_Y_STEP,SCB_PIN_Y_DIR,SCB_PIN_MOTOR_EN};
-    assert(sizeof(pins) / sizeof(pins[0]) == 20);
     const unsigned columns[] = SCB_COLUMN_PINS;
-    /* Cross-check the actual scan input list, not just an independent whitelist. */
-    for (unsigned i = 0; i < 8; ++i) assert(pins[4 + i] == columns[i]);
-    assert(SCB_PIN_UART_TX == 43 && SCB_PIN_UART_RX == 44);
-    const unsigned exposed[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,
-        18,19,20,21,26,33,34,35,36,37,38,39,40,41,42,43,44,45,46};
-    for (unsigned i = 0; i < 20; ++i) {
+    const unsigned expected_columns[] = {13,14,10,9,11,12,8,7};
+    assert(!memcmp(columns, expected_columns, sizeof(columns)));
+    assert(SCB_PIN_ROW_A0 == 6 && SCB_PIN_ROW_A1 == 5 && SCB_PIN_ROW_A2 == 4);
+    assert(SCB_PIN_UART_TX == 18 && SCB_PIN_UART_RX == 17);
+    assert(SCB_PIN_LED == 2 && SCB_PIN_MAGNET == 33 && SCB_PIN_MOTOR_EN == 38);
+#if defined(CONFIG_SCB_MOTOR_PCB_ROUTING) && CONFIG_SCB_MOTOR_PCB_ROUTING
+    assert(SCB_PIN_X_STEP == 35 && SCB_PIN_X_DIR == 34);
+    assert(SCB_PIN_Y_STEP == 37 && SCB_PIN_Y_DIR == 36);
+#else
+    assert(SCB_PIN_X_STEP == 34 && SCB_PIN_X_DIR == 35);
+    assert(SCB_PIN_Y_STEP == 36 && SCB_PIN_Y_DIR == 37);
+#endif
+    const unsigned pins[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2,
+        13,14,10,9,11,12,8,7,SCB_PIN_UART_TX,SCB_PIN_UART_RX,SCB_PIN_MAGNET,
+        SCB_PIN_X_STEP,SCB_PIN_X_DIR,SCB_PIN_Y_STEP,SCB_PIN_Y_DIR,SCB_PIN_MOTOR_EN,
+        SCB_PIN_USB_DM,SCB_PIN_USB_DP};
+    for (unsigned i = 0; i < sizeof(pins)/sizeof(pins[0]); ++i) {
         assert(pins[i] < SCB_GPIO_COUNT);
-        assert(!(pins[i] >= 22 && pins[i] <= 32)); /* Missing GPIOs / module memory. */
-        assert(pins[i] != 0 && pins[i] != 45 && pins[i] != 46); /* Boot straps. */
-        assert(pins[i] != 18); /* Board RGB LED. */
-        assert(pins[i] != 19 && pins[i] != 20); /* Keep native USB available. */
-        bool found = false;
-        for (unsigned j = 0; j < sizeof(exposed)/sizeof(exposed[0]); ++j)
-            if (pins[i] == exposed[j]) found = true;
-        assert(found);
+        /* No nonexistent pins 22..25, external flash 26..32 or boot straps. */
+        assert(!(pins[i] >= 22 && pins[i] <= 32));
+        assert(pins[i] != 0 && pins[i] != 3 && pins[i] != 45 && pins[i] != 46);
+        for (unsigned j = i + 1; j < sizeof(pins)/sizeof(pins[0]); ++j)
+            assert(pins[i] != pins[j]);
     }
-    const unsigned outputs[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1,
-        SCB_PIN_ROW_A2, SCB_PIN_MAGNET, SCB_PIN_X_STEP, SCB_PIN_X_DIR,
-        SCB_PIN_Y_STEP, SCB_PIN_Y_DIR, SCB_PIN_MOTOR_EN};
-    for (unsigned i = 0; i < sizeof(outputs)/sizeof(outputs[0]); ++i) {
-        assert(outputs[i] != 46); /* S2 GPIO46 is input-only. */
-        assert(outputs[i] != SCB_PIN_UART_TX && outputs[i] != SCB_PIN_UART_RX);
+}
+static void test_fresh_snapshot_fault_latch_and_guidance(void) {
+    ScbCore c; Fake f; init(&c, &f);
+    ticks(&c, 1, 30);
+    cmd(&c, "@80 SNAPSHOT\n", 30002);
+    assert(c.snapshot_pending && !strstr(f.output, "SNAPSHOT 80"));
+    unsigned frames = c.scan_frames;
+    ticks(&c, 30002, 8);
+    assert(c.snapshot_pending); /* One fresh frame cannot pass debounce. */
+    ticks(&c, 38002, 20);
+    assert(!c.snapshot_pending && c.scan_frames >= frames + SCB_DEBOUNCE_SCANS);
+    contains(&f, "SNAPSHOT 80 occupy=0000000000000000");
+    cmd(&c, "GUIDE 8000000000000001\n", 60000);
+    for (unsigned q = 0; q < 64; ++q) {
+        ScbRgb v = c.leds.pixels[scb_led_index(&c.leds, q)];
+        assert(!v.red && !v.blue && v.green == ((q == 0 || q == 63) ? 20 : 0));
     }
-    for (unsigned i = 0; i < 20; ++i)
-        for (unsigned j = i + 1; j < 20; ++j) assert(pins[i] != pins[j]);
+    cmd(&c, "GUIDE 0000000000000000\n", 60001);
+    for (unsigned q = 0; q < 64; ++q) assert(!c.leds.pixels[q].green);
+    cmd(&c, "@81 GUIDE xxxx\n", 60002); contains(&f, "ERR 81 COMMAND_OR_ARGS");
+    cmd(&c, "@82 SNAPSHOT\n", 60003);
+    scb_core_fault(&c, "TEST_MOTION");
+    assert(!c.snapshot_pending); contains(&f, "ERR 82 TEST_MOTION");
+    cmd(&c, "PING\nSTATUS\n@83 ARM\nSTOP\n", 60004);
+    contains(&f, "fault=TEST_MOTION"); contains(&f, "ERR 83 FAULT_LATCHED");
+    assert(!strcmp(c.fault, "TEST_MOTION"));
+    cmd(&c, "CLEAR_FAULT\n", 60005);
+    assert(!c.fault[0] && !c.armed && !c.origin_valid && !c.magnet);
+    c.origin_valid = true; c.steps_per_tile = 20;
+    cmd(&c, "IDLE\n", 60006);
+    assert(c.origin_valid && !c.armed && !c.magnet);
 }
 int main(void) {
     test_board(); test_scan_covers_all_64_squares();
@@ -280,5 +306,6 @@ int main(void) {
     test_protocol(); test_live_inputs_do_not_drive_sensor_outputs();
     test_motion(); test_watchdogs(); test_ambiguous_and_led_mapping();
     test_spec_timing_and_power_defaults();
-    puts("ESP32-S2 portable-core tests passed (simulated GPIO): sensing, framing, outputs, motion, watchdogs.");
+    test_fresh_snapshot_fault_latch_and_guidance();
+    puts("ESP32-S3 PCB V2 portable-core tests passed (simulated GPIO): sensing, framing, outputs, motion, watchdogs.");
 }

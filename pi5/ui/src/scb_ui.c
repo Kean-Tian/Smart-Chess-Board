@@ -22,7 +22,8 @@ typedef enum {
     A_CONFIRM_DELETE, A_PAGE, A_RETRY, A_MODE, A_SIDE, A_CLOCK, A_PICK,
     A_USE_PLAYER, A_PREPARE, A_CHECK, A_VERIFIED, A_START, A_PAUSE, A_END,
     A_CONFIRM_END, A_HINT, A_CONFIRM_MOVE, A_PROMOTE, A_CONNECT,
-    A_HISTORY_PAGE, A_REVIEW, A_REVIEW_STEP
+    A_HISTORY_PAGE, A_REVIEW, A_REVIEW_STEP, A_GUIDANCE, A_SCAN, A_SQUARE, A_CONFIRM_COMPUTER, A_COACH, A_COACH_RETRY,
+    A_RESET_FAULT, A_EXECUTE_COMPUTER
 } Action;
 typedef struct {
     lv_obj_t *obj;
@@ -30,7 +31,7 @@ typedef struct {
     Action action;
     int64_t value;
 } Hit;
-static Hit hits[64];
+static Hit hits[128];
 static unsigned hit_count;
 static UiScreen current;
 static PlayerStore store;
@@ -40,23 +41,28 @@ static bool data_ok;
 static int64_t editing_id, deleting_id;
 static lv_obj_t *name_input, *form_error;
 static char database_path[4096];
-static const char *screen_names[] = {"home", "setup", "profiles", "history", "player-editor", "board-setup", "game", "review", "move-editor"};
+static const char *screen_names[] = {"home", "setup", "profiles", "history", "player-editor", "board-setup", "game", "review", "move-editor", "diagnostics", "instructions", "coaching"};
 static const char *mode_codes[] = {"pvp", "pvc", "coach"};
-static const char *mode_titles[] = {"Two players", "Vs computer", "AI coaching"};
+static const char *mode_titles[] = {"Two players", "Vs computer", "With coaching"};
 static UiBridge bridge;
 static struct {
     /* 界面中的临时选择；真正的对局状态由 Python 后台确认。 */
     int mode, human, minutes, pick_side, port_index, history_offset, review_return;
     ScbPlayer white, black;
-    bool verified, show_hint, ending, review_pending, reconnecting;
+    bool verified, show_hint, ending, review_pending, reconnecting, guidance;
+    int selected_square, coach[2];
     int64_t review_id, review_ply, review_total;
+    char instruction_move[8];
 } config;
 static lv_obj_t *title_label, *status_label, *clock_labels[2], *last_move_label;
 static lv_obj_t *pause_button, *hint_button, *end_button, *move_button;
 static lv_obj_t *check_button, *start_button, *verified_button, *connection_button;
 static lv_obj_t *port_dropdown;
 static lv_obj_t *review_count, *review_move, *review_previous, *review_next, *continue_button;
-static lv_obj_t *piece_images[64];
+static lv_obj_t *piece_images[64], *sensor_tiles[64];
+static lv_obj_t *coaching_buttons[2], *coaching_text, *coaching_retry;
+static lv_obj_t *guidance_button, *scan_button, *sensor_detail, *sensor_timing, *computer_confirm;
+static lv_obj_t *fault_reset_button, *automatic_button;
 static char local_notice[256], port_options[1600];
 static unsigned last_changes;
 static uint32_t last_live_refresh;
@@ -160,6 +166,10 @@ static void shell(const char *title, const char *subtitle) {
     pause_button = hint_button = end_button = move_button = NULL;
     check_button = start_button = verified_button = connection_button = NULL;
     port_dropdown = NULL;
+    coaching_buttons[0] = coaching_buttons[1] = coaching_text = coaching_retry = NULL;
+    guidance_button = scan_button = sensor_detail = sensor_timing = computer_confirm = NULL;
+    fault_reset_button = automatic_button = NULL;
+    memset(sensor_tiles, 0, sizeof(sensor_tiles));
     review_count = review_move = review_previous = review_next = continue_button = NULL;
     memset(piece_images, 0, sizeof(piece_images));
     end_dialog_open = false;
@@ -169,7 +179,7 @@ static void shell(const char *title, const char *subtitle) {
     if(current != UI_HOME) {
         /* 回放可能从不同页面进入，返回时使用记住的来源。 */
         UiScreen back = current == UI_PLAYER_EDITOR ? UI_PROFILES :
-            current == UI_REVIEW ? (UiScreen)config.review_return : current == UI_MOVE_EDITOR ? UI_GAME :
+            current == UI_REVIEW ? (UiScreen)config.review_return : (current == UI_MOVE_EDITOR || current == UI_INSTRUCTIONS || current == UI_COACHING) ? UI_GAME :
             current == UI_BOARD_SETUP ? (config.reconnecting ? UI_GAME : UI_SETUP) : UI_HOME;
         button(root(), LV_SYMBOL_LEFT, 32, 88, 80, 80, false, "back", A_NAV, back, screen_names[back]);
     }
@@ -191,11 +201,10 @@ static void home(void) {
     /* 主菜单四个入口，加上实际选中的玩家和当前游戏状态。 */
     reload_players();
     shell("Smart Chess Board", "Play, manage players and review your recorded games.");
-    feature("New game", "Two players, computer\nor local coaching", LV_SYMBOL_PLAY, 32, 280, "new-game", UI_SETUP, true);
+    feature("New game", "Two players, computer\nor AI coaching", LV_SYMBOL_PLAY, 32, 280, "new-game", UI_SETUP, true);
     feature("Players", "Create, select and\nmanage saved players", LV_SYMBOL_DIRECTORY, 368, 280, "players", UI_PROFILES, false);
     feature("History", "Recorded results\nand move-by-move review", LV_SYMBOL_LIST, 32, 544, "history", UI_HISTORY, false);
-    /* 与其他卡片使用相同样式，但点击不跳转，也不执行调试操作。 */
-    feature("Diagnostics", "", LV_SYMBOL_SETTINGS, 368, 544, "diagnostics", UI_SCREEN_COUNT, false);
+    feature("Board test", "Live sensor occupancy\nand board connection", LV_SYMBOL_SETTINGS, 368, 544, "diagnostics", UI_DIAGNOSTICS, false);
     lv_obj_t *card = box(root(), 32, 836, 656, 144, PAPER, 24);
     text(card, "SELECTED PLAYER", 24, 22, 608, 20, MUTED);
     clipped_text(card, !data_ok ? "Database unavailable" : selected.id ? selected.name : "No player selected", 24, 68, 608, 32, INK);
@@ -234,9 +243,18 @@ static void setup(void) {
         text(root(), "YOUR SIDE", 32, 690, 656, 20, MUTED);
         button(root(), "White", 32, 736, 320, 80, !config.human, "side-white", A_SIDE, 0, NULL);
         button(root(), "Black", 368, 736, 320, 80, config.human != 0, "side-black", A_SIDE, 1, NULL);
+    } else if(config.mode == 2) {
+        text(root(), "AI COACHING / EACH PLAYER CHOOSES", 32, 678, 656, 20, MUTED);
+        for(int i = 0; i < 2; ++i) {
+            text(root(), i ? "Black" : "White", 32, 728+i*68, 140, 24, INK);
+            button(root(), "ON", 200, 716+i*68, 224, 56, config.coach[i] == 1,
+                   i ? "coach-black-on" : "coach-white-on", A_COACH, i*2+1, NULL);
+            button(root(), "OFF", 440, 716+i*68, 248, 56, config.coach[i] == 0,
+                   i ? "coach-black-off" : "coach-white-off", A_COACH, i*2, NULL);
+        }
     } else {
-        text(root(), config.mode == 2 ? "Local Stockfish hints for both players." : "Two people playing on the physical board.", 32, 710, 656, 24, MUTED);
-        text(root(), config.mode == 2 ? "Hints suggest moves; players move the pieces." : "Only legal, matching moves advance the game.", 32, 760, 656, 20, MUTED);
+        text(root(), "Two people playing on the physical board.", 32, 710, 656, 24, MUTED);
+        text(root(), "Only legal, matching moves advance the game.", 32, 760, 656, 20, MUTED);
     }
     text(root(), "TIME CONTROL", 32, 860, 656, 20, MUTED);
     const int minutes[] = {5, 10, 0};
@@ -244,8 +262,13 @@ static void setup(void) {
     for(int i = 0; i < 3; ++i)
         button(root(), times[i], 32+i*224, 904, 208, 88, config.minutes == minutes[i],
                i == 0 ? "clock-five" : i == 1 ? "clock-ten" : "clock-none", A_CLOCK, minutes[i], NULL);
-    status_label = text(root(), "", 32, 1022, 656, 20, RED);
-    lv_obj_set_height(status_label, 80);
+    if(config.mode == 0)
+        button(root(), config.guidance ? "Guidance: ON" : "Guidance: OFF", 32, 1010, 656, 64, false,
+               "setup-guidance", A_GUIDANCE, 0, NULL);
+    else if(config.mode == 2)
+        text(root(), "Online AI advice is optional for each player.", 32, 1020, 656, 20, MUTED);
+    status_label = text(root(), "", 32, 1084, 656, 20, RED);
+    lv_obj_set_height(status_label, 36);
     lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
     button(root(), "Set up the board  " LV_SYMBOL_RIGHT, 32, 1128, 656, 96, true, "prepare", A_PREPARE, 0, "board-setup");
 }
@@ -279,7 +302,10 @@ static void profiles(void) {
     lv_obj_set_style_text_align(page_label, LV_TEXT_ALIGN_CENTER, 0);
     char choice[80];
     snprintf(choice, sizeof(choice), "Selected: %s", selected.id ? selected.name : "None");
-    clipped_text(root(), data_ok ? choice : "Selection unavailable", 32, 850, 656, 20, MUTED);
+    ScbPlayerStats stats = {0};
+    bool stats_ok = data_ok && selected.id && player_store_stats(&store, selected.id, &stats);
+    if(stats_ok) snprintf(choice, sizeof(choice), "Completed: %d   W: %d   L: %d   Draw: %d", stats.completed, stats.wins, stats.losses, stats.draws);
+    clipped_text(root(), !data_ok ? "Selection unavailable" : stats_ok ? choice : "Select a player to view game counts", 32, 850, 656, 20, MUTED);
     button(root(), data_ok ? "Create player" : "Retry database", 32, 892, 656, 84, true,
            data_ok ? "create-player" : "retry-database", data_ok ? A_NEW : A_RETRY, 0, "player-editor");
     disable(button(root(), "Rename", 32, 996, 320, 80, false, "rename-player", A_EDIT, 0, "player-editor"), !data_ok || !selected.id);
@@ -325,7 +351,7 @@ static void history(void) {
         text(card, total == 0 ? "Completed and interrupted games will appear here." : "Waiting for the local game service.", 24, 124, 608, 24, MUTED);
     } else {
         for(int i = 0; i < 4; ++i) {
-            char path[80], white[40], black[40], result[32], state[32], title[96];
+            char path[80], white[40], black[40], result[32], state[32], title[128], date[40], mode[16];
             snprintf(path, sizeof(path), "$.games[%d].id", i);
             int64_t id = ui_json_int(&bridge, bridge.history, path, 0);
             if(!id) break;
@@ -341,7 +367,13 @@ static void history(void) {
             snprintf(title, sizeof(title), "%s vs %s", white, black);
             clipped_text(b, title, 24, 22, 608, 28, INK);
             snprintf(title, sizeof(title), "%s / %s", result, state);
-            text(b, title, 24, 88, 608, 24, MUTED);
+            text(b, title, 24, 66, 608, 24, MUTED);
+            snprintf(path, sizeof(path), "$.games[%d].created_at", i);
+            ui_json_text(&bridge, bridge.history, path, date, sizeof(date));
+            snprintf(path, sizeof(path), "$.games[%d].mode", i);
+            ui_json_text(&bridge, bridge.history, path, mode, sizeof(mode));
+            snprintf(title, sizeof(title), "%s / %s", date, mode);
+            clipped_text(b, title, 24, 112, 608, 20, MUTED);
         }
     }
     disable(button(root(), LV_SYMBOL_LEFT " Previous", 32, 1090, 320, 88, false, "previous-history", A_HISTORY_PAGE, -4, NULL), total < 0 || offset <= 0);
@@ -394,7 +426,7 @@ static void board_setup(void) {
           config.reconnecting ? "Reconnect and restore the last accepted position." :
           "Target layout / sensors detect presence, not piece type.");
     text(root(), mode_titles[config.mode], 32, 252, 656, 20, MUTED);
-    /* 开局只保留必要的连接入口，不提供独立诊断页面。 */
+    /* 此处是开局连接，独立 Board test 页复用同一个后台连接。 */
     port_dropdown = lv_dropdown_create(root());
     lv_obj_set_pos(port_dropdown, 32, 300);
     lv_obj_set_size(port_dropdown, 432, 64);
@@ -437,11 +469,30 @@ static void active_game(void) {
     lv_obj_t *info = box(root(), 32, 590, 656, 310, PAPER, 24);
     text(info, "GAME STATUS / MOVE FEEDBACK", 24, 20, 608, 20, MUTED);
     status_label = text(info, "", 24, 76, 608, 24, INK);
-    lv_obj_set_height(status_label, 208);
+    lv_obj_set_height(status_label, 160);
     lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
-    hint_button = button(root(), "Hint", 32, 940, 208, 80, false, "hint", A_HINT, 0, NULL);
+    char mode[16];
+    ui_json_text(&bridge, bridge.state, "$.mode", mode, sizeof(mode));
+    if(!strcmp(mode, "coach")) {
+        for(int i = 0; i < 2; ++i) {
+            coaching_buttons[i] = button(info, "", 24+i*312, 248, 296, 48, false,
+                                         i ? "game-coach-black" : "game-coach-white", A_COACH, i, NULL);
+            lv_obj_set_style_text_font(coaching_buttons[i], font(20), 0);
+        }
+        hint_button = button(root(), "AI coaching", 32, 940, 208, 80, false, "ai-coaching", A_NAV, UI_COACHING, "coaching");
+        lv_obj_set_style_text_font(hint_button, font(24), 0);
+    } else if(strcmp(mode, "pvc")) {
+        guidance_button = button(info, "Guidance: OFF", 24, 248, 608, 48, false, "game-guidance", A_GUIDANCE, 0, NULL);
+        lv_obj_set_style_text_font(guidance_button, font(20), 0);
+        hint_button = button(root(), "Hint", 32, 940, 208, 80, false, "hint", A_HINT, 0, NULL);
+    }
+    if(!strcmp(mode, "pvc")) {
+        pause_button = button(root(), "Pause", 32, 940, 320, 80, true, "pause", A_PAUSE, 0, NULL);
+        end_button = button(root(), "End", 368, 940, 320, 80, false, "end", A_END, 0, NULL);
+    } else {
     pause_button = button(root(), "Pause", 256, 940, 208, 80, true, "pause", A_PAUSE, 0, NULL);
     end_button = button(root(), "End", 480, 940, 208, 80, false, "end", A_END, 0, NULL);
+    }
     move_button = button(root(), "Confirm move", 32, 1040, 656, 80, false, "confirm-move", A_CONFIRM_MOVE, 0, "move-editor");
     char first[8];
     bool promotions = ui_json_text(&bridge, bridge.state, "$.promotions[0]", first, sizeof(first));
@@ -449,13 +500,103 @@ static void active_game(void) {
         lv_obj_add_flag(move_button, LV_OBJ_FLAG_HIDDEN);
         const char *names[] = {"Queen", "Rook", "Bishop", "Knight"};
         const char pieces[] = {'q','r','b','n'};
-        for(int i = 0; i < 4; ++i) button(root(), names[i], 32+i*168, 1040, 152, 80, false, "promote", A_PROMOTE, pieces[i], NULL);
+        char wanted[8];
+        ui_json_text(&bridge, bridge.state, "$.computer_move", wanted, sizeof(wanted));
+        if(wanted[0]) {
+            button(root(), "Computer move / confirm placement", 32, 1040, 656, 80, false,
+                   "computer-instructions", A_NAV, UI_INSTRUCTIONS, "instructions");
+        } else {
+            for(int i = 0; i < 4; ++i) button(root(), names[i], 32+i*168, 1040, 152, 80, false, "promote", A_PROMOTE, pieces[i], NULL);
+        }
     }
     lv_obj_t *position = button(root(), "View position", 32, 1140, 320, 80, false, "view-position", A_REVIEW,
                                 ui_json_int(&bridge, bridge.state, "$.game_id", 0), "review");
     disable(position, ui_json_int(&bridge, bridge.state, "$.game_id", 0) <= 0);
     disable(button(root(), "Board connection", 368, 1140, 320, 80, false, "game-connection", A_NAV, UI_BOARD_SETUP, "board-setup"),
             !state_flag("$.active"));
+}
+static void diagnostics(void) {
+    /* 固定坐标直接对应固件；未知数据用 ?，不会误画成空盘。 */
+    shell("Board / Sensor Test", "Live occupancy only / piece types are not detected.");
+    port_dropdown = lv_dropdown_create(root());
+    lv_obj_set_pos(port_dropdown, 32, 270);
+    lv_obj_set_size(port_dropdown, 432, 72);
+    lv_obj_set_style_text_font(port_dropdown, font(24), 0);
+    lv_dropdown_set_options(port_dropdown, "No USB serial ports");
+    lv_obj_add_event_cb(port_dropdown, dropdown_event, LV_EVENT_VALUE_CHANGED, NULL);
+    port_options[0] = '\0';
+    connection_button = button(root(), "Connect", 480, 270, 208, 72, true, "connect-board", A_CONNECT, 0, NULL);
+    lv_obj_set_style_text_font(connection_button, font(24), 0);
+    text(root(), "O = occupied   blank = empty   ? = unavailable", 32, 358, 656, 20, MUTED);
+    for(int r = 0; r < 8; ++r) {
+        char rank[2] = {(char)('8'-r), 0};
+        text(root(), rank, 82, 420+r*62, 24, 20, MUTED);
+        for(int c = 0; c < 8; ++c) {
+            int square = (7-r)*8+c;
+            sensor_tiles[square] = button(root(), "?", 112+c*62, 400+r*62, 62, 62, false,
+                                         "sensor-square", A_SQUARE, square, NULL);
+            lv_obj_set_style_radius(sensor_tiles[square], 0, 0);
+        }
+    }
+    for(int c = 0; c < 8; ++c) {
+        char file[2] = {(char)('a'+c), 0};
+        text(root(), file, 136+c*62, 908, 24, 20, MUTED);
+    }
+    sensor_detail = text(root(), "", 32, 950, 656, 24, INK);
+    lv_obj_set_height(sensor_detail, 64);
+    sensor_timing = text(root(), "", 32, 1022, 656, 20, MUTED);
+    lv_obj_set_height(sensor_timing, 92);
+    lv_label_set_long_mode(sensor_timing, LV_LABEL_LONG_DOT);
+    scan_button = button(root(), "Scan now", 32, 1132, 208, 80, true, "scan-board", A_SCAN, 0, NULL);
+    fault_reset_button = button(root(), "Reset fault", 256, 1132, 208, 80, false, "reset-fault", A_RESET_FAULT, 0, NULL);
+    lv_obj_t *current_game = button(root(), "Current game", 480, 1132, 208, 80, false, "sensor-game", A_NAV, UI_GAME, "game");
+    lv_obj_set_style_text_font(scan_button, font(20), 0);
+    lv_obj_set_style_text_font(fault_reset_button, font(20), 0);
+    lv_obj_set_style_text_font(current_game, font(20), 0);
+    status_label = text(root(), "", 32, 1220, 656, 20, RED);
+    lv_obj_set_height(status_label, 48);
+    lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
+}
+static void coaching_page(void) {
+    shell("AI coaching", "Optional online advice / each player decides independently.");
+    for(int i = 0; i < 2; ++i) {
+        coaching_buttons[i] = button(root(), "", 32+i*336, 278, 320, 80, false,
+                                     i ? "game-coach-black" : "game-coach-white", A_COACH, i, NULL);
+        lv_obj_set_style_text_font(coaching_buttons[i], font(24), 0);
+    }
+    lv_obj_t *panel = box(root(), 32, 400, 656, 630, PAPER, 24);
+    lv_obj_add_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
+    coaching_text = text(panel, "", 24, 28, 608, 24, INK);
+    coaching_retry = button(root(), "Request AI advice", 32, 1060, 656, 80, true,
+                            "retry-ai-coach", A_COACH_RETRY, 0, NULL);
+    text(root(), "Advice does not move pieces or change the game.\nYou can continue if the service is unavailable.", 32, 1166, 656, 20, MUTED);
+}
+static void instructions(void) {
+    shell("Computer move", "Follow the steps on the physical board.");
+    char move[8];
+    ui_json_text(&bridge, bridge.state, "$.computer_move", move, sizeof(move));
+    snprintf(config.instruction_move, sizeof(config.instruction_move), "%s", move);
+    text(root(), move[0] ? move : "No computer move pending", 32, 274, 656, 40, INK);
+    lv_obj_t *card = box(root(), 32, 352, 656, 600, PAPER, 24);
+    char lines[1400] = "", step[256], path[80];
+    for(int i = 0; i < 5; ++i) {
+        snprintf(path, sizeof(path), "$.computer_action.steps[%d]", i);
+        if(!ui_json_text(&bridge, bridge.state, path, step, sizeof(step))) break;
+        size_t used = strlen(lines);
+        snprintf(lines+used, sizeof(lines)-used, "%d. %s\n\n", i+1, step);
+    }
+    text(card, lines[0] ? lines : "Waiting for a validated computer move.", 24, 32, 608, 28, INK);
+    status_label = text(root(), "", 32, 976, 656, 24, MUTED);
+    lv_obj_set_height(status_label, 104);
+    lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
+    computer_confirm = button(root(), "I placed the specified replacement", 32, 1100, 656, 80, true,
+                              "confirm-computer", A_CONFIRM_COMPUTER, 0, NULL);
+    lv_obj_set_style_text_font(computer_confirm, font(24), 0);
+    automatic_button = button(root(), "Execute automatically", 32, 1100, 656, 80, true,
+                              "execute-computer", A_EXECUTE_COMPUTER, 0, NULL);
+    lv_obj_set_style_text_font(automatic_button, font(24), 0);
+    text(root(), "Hall sensors check occupancy; confirm the actual piece yourself.", 32, 1200, 656, 20, MUTED);
 }
 static void review(void) {
     /* 显示已保存的局面，Previous/Next 只改变查看的步数。 */
@@ -599,7 +740,8 @@ static void refresh_live(void) {
     /* 根据后台状态更新文字和按钮，避免每次更新都重建整个页面。 */
     bool online = service_online(), active = state_flag("$.active"), paused = state_flag("$.paused");
     bool known = state_flag("$.board_known"), board_connected = state_flag("$.board_connected");
-    char message[1024], error[512], value[256];
+    char message[2048], error[512], value[256], mode[16];
+    ui_json_text(&bridge, bridge.state, "$.mode", mode, sizeof(mode));
     message[0] = error[0] = '\0';
     if(local_notice[0]) snprintf(message, sizeof(message), "%s", local_notice);
     else if(!online) snprintf(message, sizeof(message), "Game service unavailable. Launch with pi5/start.sh ui.");
@@ -622,7 +764,7 @@ static void refresh_live(void) {
         }
     }
     if(current == UI_GAME) {
-        char fen[128], move[8], hint[512], promotion[8], wanted[8], engine_error[512];
+        char fen[128], move[8], hint[1400], promotion[8], wanted[8], engine_error[512];
         ui_json_text(&bridge, bridge.state, "$.fen", fen, sizeof(fen));
         ui_json_text(&bridge, bridge.state, "$.last_move", move, sizeof(move));
         ui_json_text(&bridge, bridge.state, "$.hint", hint, sizeof(hint));
@@ -638,28 +780,72 @@ static void refresh_live(void) {
             label_value(clock_labels[i], value);
         }
         label_value(last_move_label, move[0] ? move : "No moves yet");
-        if(active && !paused && !error[0] && !local_notice[0]) {
-            if(engine_error[0]) snprintf(message, sizeof(message), "Stockfish unavailable: %s", engine_error);
+        if(active && !paused && !state_flag("$.motion_active") && !state_flag("$.restore") && !state_flag("$.ambiguous") && !error[0] && !local_notice[0]) {
+            if(engine_error[0]) snprintf(message, sizeof(message), "%s unavailable: %s", !strcmp(mode, "coach") ? "AI coaching" : "Stockfish", engine_error);
             else if(wanted[0] && !state_flag("$.restore"))
-                snprintf(message, sizeof(message), "Stockfish plays %s.\nExecute this move on the physical board.", wanted);
-            else if(config.show_hint && hint[0] && !state_flag("$.restore")) snprintf(message, sizeof(message), "%s", hint);
+                snprintf(message, sizeof(message), "Stockfish plays %s.\nOpen Computer move for physical steps.", wanted);
+            else if((config.show_hint || !strcmp(mode, "coach")) && hint[0] && !state_flag("$.restore")) snprintf(message, sizeof(message), "%s", hint);
+        }
+        char game_status[160], source[8], destination[8], path[80];
+        ui_json_text(&bridge, bridge.state, "$.game_status", game_status, sizeof(game_status));
+        if(game_status[0] && !paused && !state_flag("$.restore") && !error[0]) {
+            size_t used = strlen(message);
+            snprintf(message+used, sizeof(message)-used, "\n%s", game_status);
+        }
+        if(state_flag("$.guidance") && !state_flag("$.restore") && !paused && !error[0] &&
+           ui_json_text(&bridge, bridge.state, "$.legal_source", source, sizeof(source)) && source[0]) {
+            snprintf(message, sizeof(message), "Lifted %s / legal destinations:", source);
+            bool any = false;
+            for(int i = 0; i < 27; ++i) {
+                snprintf(path, sizeof(path), "$.legal_destinations[%d]", i);
+                if(!ui_json_text(&bridge, bridge.state, path, destination, sizeof(destination))) break;
+                size_t used = strlen(message);
+                snprintf(message+used, sizeof(message)-used, "%s%s", any ? ", " : " ", destination);
+                any = true;
+            }
+            if(!any) strncat(message, " none", sizeof(message)-strlen(message)-1);
         }
         bool has_promotion = ui_json_text(&bridge, bridge.state, "$.promotions[0]", promotion, sizeof(promotion));
         bool promotion_controls = false;
-        for(unsigned i = 0; i < hit_count; ++i) if(hits[i].action == A_PROMOTE) promotion_controls = true;
+        for(unsigned i = 0; i < hit_count; ++i) if(hits[i].action == A_PROMOTE || !strcmp(hits[i].id, "computer-instructions")) promotion_controls = true;
         if(!end_dialog_open && has_promotion != promotion_controls) {
             scb_ui_show(UI_GAME);
             return;
         }
-        disable(hint_button, !active || paused || !state_flag("$.synced") || state_flag("$.thinking"));
+        if(hint_button) disable(hint_button, !active || (strcmp(mode, "coach") && (paused || !state_flag("$.synced") || state_flag("$.thinking"))));
         bool clock_expired = ui_json_int(&bridge, bridge.state, "$.white_ms", -1) == 0 ||
                              ui_json_int(&bridge, bridge.state, "$.black_ms", -1) == 0;
         disable(pause_button, !active || (paused && (!state_flag("$.synced") || clock_expired)));
         disable(end_button, !active);
-        disable(move_button, !active || paused || !known);
+        disable(move_button, !active || paused || !known || state_flag("$.motion_busy"));
         button_value(pause_button, paused ? "Resume" : "Pause");
+        if(guidance_button) {
+            button_value(guidance_button, state_flag("$.guidance") ? "Guidance: ON" : "Guidance: OFF");
+            disable(guidance_button, !active);
+        }
+        button_value(move_button, wanted[0] ? "Computer move / instructions" : "Confirm move");
     }
-    if(current == UI_BOARD_SETUP) {
+    if(current == UI_GAME || current == UI_COACHING) {
+        for(int i = 0; i < 2; ++i) if(coaching_buttons[i]) {
+            snprintf(value, sizeof(value), "%s AI: %s", i ? "Black" : "White", state_flag(i ? "$.coach_black" : "$.coach_white") ? "ON" : "OFF");
+            button_value(coaching_buttons[i], value);
+            disable(coaching_buttons[i], !active || !online || strcmp(mode, "coach"));
+        }
+    }
+    if(current == UI_COACHING) {
+        char hint[1400], problem[512];
+        ui_json_text(&bridge, bridge.state, "$.hint", hint, sizeof(hint));
+        ui_json_text(&bridge, bridge.state, "$.engine_error", problem, sizeof(problem));
+        const char *advice = !online ? "Game service unavailable." : !active ? "No active coaching game." :
+            strcmp(mode, "coach") ? "AI coaching is available in With coaching mode." :
+            !state_flag("$.coaching_enabled") ? "The current player has AI coaching OFF." :
+            problem[0] ? problem : state_flag("$.thinking") ? "AI coach is thinking. You can keep playing." : hint[0] ? hint :
+            "No AI advice yet. Request advice when the board is synchronized.";
+        label_value(coaching_text, advice);
+        disable(coaching_retry, !online || !active || paused || !state_flag("$.coaching_enabled") || !state_flag("$.synced") || state_flag("$.thinking"));
+        button_value(coaching_retry, problem[0] ? "Retry AI advice" : "Request AI advice");
+    }
+    if(current == UI_BOARD_SETUP || current == UI_DIAGNOSTICS) {
         char options[sizeof(port_options)] = "", path[80], port[128];
         int count = 0;
         for(int i = 0; i < 8; ++i) {
@@ -678,14 +864,68 @@ static void refresh_live(void) {
         }
         disable(port_dropdown, !online || board_connected || state_flag("$.usb_busy") || !count);
         disable(connection_button, !online || state_flag("$.usb_busy") || (!count && !board_connected));
-        button_value(connection_button, board_connected ? "Disconnect" : "Connect board");
+        button_value(connection_button, board_connected ? "Disconnect" : current == UI_DIAGNOSTICS ? "Connect" : "Connect board");
         if(online && !error[0] && !local_notice[0] && !board_connected)
             snprintf(message, sizeof(message), "Choose a USB port above, then connect the board.");
     }
+    if(current == UI_DIAGNOSTICS) {
+        char mask_text[32], expected_text[32];
+        uint64_t mask = 0, expected = 0;
+        if(known && ui_json_text(&bridge, bridge.state, "$.board", mask_text, sizeof(mask_text))) mask = strtoull(mask_text, NULL, 16);
+        bool compare = known && ui_json_text(&bridge, bridge.state, "$.expected_board", expected_text, sizeof(expected_text));
+        if(compare) expected = strtoull(expected_text, NULL, 16);
+        for(int i = 0; i < 64; ++i) {
+            bool occupied = known && ((mask >> i) & 1);
+            button_value(sensor_tiles[i], !known ? "?" : occupied ? "O" : "");
+            uint32_t color = !known ? 0xE6E5DF : occupied ? 0xCEDECE : ((i/8+i%8)&1) ? 0xA49B85 : 0xE9E3D5;
+            lv_obj_set_style_bg_color(sensor_tiles[i], lv_color_hex(color), 0);
+            lv_obj_set_style_border_width(sensor_tiles[i], compare && (((mask ^ expected) >> i) & 1) ? 3 : 0, 0);
+            lv_obj_set_style_border_color(sensor_tiles[i], lv_color_hex(RED), 0);
+        }
+        int q = config.selected_square;
+        snprintf(value, sizeof(value), "%c%d: %s / %s", 'a'+q%8, q/8+1, !known ? "Unavailable" : ((mask>>q)&1) ? "Occupied" : "Empty",
+                 !known ? "No fresh sensor data" : compare ? mask == expected ? "Board matches" : "Red border = mismatch" : "No game position to compare");
+        label_value(sensor_detail, value);
+        int64_t period = ui_json_int(&bridge, bridge.state, "$.scan_timing.frame_us", -1);
+        int64_t debounce = ui_json_int(&bridge, bridge.state, "$.scan_timing.debounce_us", -1);
+        int64_t round_trip = ui_json_int(&bridge, bridge.state, "$.scan_round_trip_ms", -1);
+        if(online && board_connected && period > 0)
+            snprintf(value, sizeof(value), "MCU scan period: %.2f ms / %.1f Hz\nDebounce: %.2f ms / USB round trip: %" PRId64 " ms", period/1000.0, 1000000.0/period, debounce/1000.0, round_trip);
+        else snprintf(value, sizeof(value), "Scan timing unavailable. Connect and press Scan now.");
+        label_value(sensor_timing, value);
+        disable(scan_button, !online || !board_connected || state_flag("$.usb_busy"));
+        char fault[256];
+        ui_json_text(&bridge, bridge.state, "$.fault", fault, sizeof(fault));
+        disable(fault_reset_button, !online || !board_connected || !fault[0] || state_flag("$.usb_busy") || state_flag("$.motion_busy"));
+        char diagnostic_error[160];
+        if(ui_json_text(&bridge, bridge.state, "$.diagnostic_error", diagnostic_error, sizeof(diagnostic_error)) && diagnostic_error[0])
+            snprintf(message, sizeof(message), "%s", diagnostic_error);
+        else if(online && !error[0]) snprintf(message, sizeof(message), "%s", !known ? "Occupancy unavailable / no fresh scan" : mask ? "Live sensor data / tap a square" : "Empty board / valid sensor data");
+    }
+    if(current == UI_INSTRUCTIONS) {
+        char wanted[8], replacement[32];
+        ui_json_text(&bridge, bridge.state, "$.computer_move", wanted, sizeof(wanted));
+        if(online && strcmp(wanted, config.instruction_move)) {
+            scb_ui_show(UI_GAME);
+            return;
+        }
+        bool replacement_needed = ui_json_text(&bridge, bridge.state, "$.computer_action.replacement", replacement, sizeof(replacement));
+        if(replacement_needed) {
+            lv_obj_remove_flag(computer_confirm, LV_OBJ_FLAG_HIDDEN);
+            snprintf(value, sizeof(value), "I placed the %s", replacement);
+            button_value(computer_confirm, value);
+        } else lv_obj_add_flag(computer_confirm, LV_OBJ_FLAG_HIDDEN);
+        disable(computer_confirm, !active || paused || !known || !replacement_needed || state_flag("$.restore") || !state_flag("$.computer_action.placement_matches"));
+        bool automatic = state_flag("$.automatic_motion_enabled") && state_flag("$.computer_action.automatic_eligible");
+        if(automatic) lv_obj_remove_flag(automatic_button, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(automatic_button, LV_OBJ_FLAG_HIDDEN);
+        disable(automatic_button, !online || !active || paused || !state_flag("$.synced") || state_flag("$.motion_busy") || state_flag("$.usb_busy"));
+        if(!wanted[0] && online && !error[0]) snprintf(message, sizeof(message), "No computer move pending. Return to the game.");
+    }
     if(current == UI_REVIEW && error[0]) label_value(review_move, error);
     char board_fault[256];
-    if((current == UI_BOARD_SETUP || current == UI_GAME) && ui_json_text(&bridge, bridge.state, "$.fault", board_fault, sizeof(board_fault)) && board_fault[0])
-        snprintf(message, sizeof(message), "Board fault: %s", board_fault);
+    if((current == UI_BOARD_SETUP || current == UI_GAME || current == UI_DIAGNOSTICS || current == UI_INSTRUCTIONS) && ui_json_text(&bridge, bridge.state, "$.fault", board_fault, sizeof(board_fault)) && board_fault[0])
+        snprintf(message, sizeof(message), "Fault: %.150s. Resolve it; Board Test > Reset fault, then Resume.", board_fault);
     label_value(status_label, message);
 }
 static void click(lv_event_t *event) {
@@ -738,6 +978,11 @@ static void click(lv_event_t *event) {
             config.pick_side = -1;
             scb_ui_show(UI_SETUP); break;
         case A_PREPARE:
+            if(config.mode == 2 && (config.coach[0] < 0 || config.coach[1] < 0)) {
+                snprintf(local_notice, sizeof(local_notice), "White and Black must each choose AI coaching ON or OFF.");
+                label_value(status_label, local_notice);
+                break;
+            }
             if((config.mode != 1 && (!config.white.id || !config.black.id || config.white.id == config.black.id)) ||
                (config.mode == 1 && !(config.human ? config.black.id : config.white.id))) {
                 snprintf(local_notice, sizeof(local_notice), "%s", config.mode == 1 ? "Choose a saved human player." : "Choose two different saved players.");
@@ -746,8 +991,9 @@ static void click(lv_event_t *event) {
             }
             config.verified = false;
             config.show_hint = config.mode == 2;
-            if(command("{\"cmd\":\"prepare\",\"mode\":\"%s\",\"white_id\":%" PRId64 ",\"black_id\":%" PRId64 ",\"human\":\"%s\",\"minutes\":%d}",
-                mode_codes[config.mode], config.white.id, config.black.id, config.human ? "b" : "w", config.minutes)) scb_ui_show(UI_BOARD_SETUP);
+            if(command("{\"cmd\":\"prepare\",\"mode\":\"%s\",\"white_id\":%" PRId64 ",\"black_id\":%" PRId64 ",\"human\":\"%s\",\"minutes\":%d,\"guidance\":%s,\"coach_white\":%s,\"coach_black\":%s}",
+                mode_codes[config.mode], config.white.id, config.black.id, config.human ? "b" : "w", config.minutes, config.mode == 0 && config.guidance ? "true" : "false",
+                config.coach[0] == 1 ? "true" : "false", config.coach[1] == 1 ? "true" : "false")) scb_ui_show(UI_BOARD_SETUP);
             break;
         case A_CHECK: config.verified = false; command("{\"cmd\":\"check\"}"); break;
         case A_VERIFIED: config.verified = !config.verified; refresh_live(); break;
@@ -762,8 +1008,39 @@ static void click(lv_event_t *event) {
             }
             break;
         }
+        case A_COACH:
+            if(current == UI_SETUP) {
+                config.coach[hit.value / 2] = (int)(hit.value % 2);
+                scb_ui_show(UI_SETUP);
+            } else command("{\"cmd\":\"coaching\",\"side\":\"%s\",\"enabled\":%s}", hit.value ? "b" : "w",
+                           state_flag(hit.value ? "$.coach_black" : "$.coach_white") ? "false" : "true");
+            break;
+        case A_COACH_RETRY: command("{\"cmd\":\"hint\"}"); break;
         case A_HINT: config.show_hint = true; command("{\"cmd\":\"hint\"}"); break;
-        case A_CONFIRM_MOVE: scb_ui_show(UI_MOVE_EDITOR); break;
+        case A_GUIDANCE:
+            if(current == UI_SETUP) { config.guidance = !config.guidance; scb_ui_show(UI_SETUP); }
+            else command("{\"cmd\":\"guidance\",\"enabled\":%s}", state_flag("$.guidance") ? "false" : "true");
+            break;
+        case A_SCAN: command("{\"cmd\":\"scan\"}"); break;
+        case A_RESET_FAULT: command("{\"cmd\":\"reset_fault\"}"); break;
+        case A_EXECUTE_COMPUTER: {
+            char move[8];
+            if(ui_json_text(&bridge, bridge.state, "$.computer_move", move, sizeof(move)))
+                command("{\"cmd\":\"execute_computer\",\"move\":\"%s\"}", move);
+            break;
+        }
+        case A_SQUARE: config.selected_square = (int)hit.value; refresh_live(); break;
+        case A_CONFIRM_COMPUTER: {
+            char move[8];
+            if(ui_json_text(&bridge, bridge.state, "$.computer_move", move, sizeof(move)))
+                command("{\"cmd\":\"confirm_computer\",\"move\":\"%s\"}", move);
+            break;
+        }
+        case A_CONFIRM_MOVE:
+            { char wanted[8];
+              ui_json_text(&bridge, bridge.state, "$.computer_move", wanted, sizeof(wanted));
+              scb_ui_show(wanted[0] ? UI_INSTRUCTIONS : UI_MOVE_EDITOR); }
+            break;
         case A_PROMOTE: {
             char move[8];
             if(ui_json_text(&bridge, bridge.state, "$.promotions[0]", move, sizeof(move))) {
@@ -812,6 +1089,9 @@ void scb_ui_show(UiScreen screen) {
         case UI_GAME: active_game(); break;
         case UI_REVIEW: review(); break;
         case UI_MOVE_EDITOR: move_editor(); break;
+        case UI_DIAGNOSTICS: diagnostics(); break;
+        case UI_INSTRUCTIONS: instructions(); break;
+        case UI_COACHING: coaching_page(); break;
         default: break;
     }
     refresh_live();
@@ -823,6 +1103,7 @@ void scb_ui_init(const char *path) {
     editing_id = deleting_id = 0;
     memset(&config, 0, sizeof(config));
     config.minutes = 10;
+    config.coach[0] = config.coach[1] = -1;
     config.pick_side = -1;
     config.review_return = UI_HISTORY;
     local_notice[0] = '\0';
@@ -832,6 +1113,12 @@ void scb_ui_init(const char *path) {
     scb_ui_show(UI_HOME);
 }
 void scb_ui_shutdown(void) { ui_bridge_close(&bridge); player_store_close(&store); }
+void scb_ui_preview_setup(int mode) {
+    /* 仅供离线版式渲染，不向后台发送设置。 */
+    if(!bridge.disabled || mode < 0 || mode > 2) return;
+    config.mode = mode;
+    scb_ui_show(UI_SETUP);
+}
 void scb_ui_text_input(const char *value) {
     if((current == UI_PLAYER_EDITOR || current == UI_MOVE_EDITOR) && name_input) lv_textarea_add_text(name_input, value);
 }
@@ -895,7 +1182,8 @@ static bool label_bounds(lv_obj_t *parent) {
         if(lv_obj_check_type(child, &lv_label_class) && lv_label_get_text(child)[0]) {
             lv_area_t a;
             lv_obj_get_coords(child, &a);
-            if(a.x1 < bounds.x1 || a.y1 < bounds.y1 || a.x2 > bounds.x2 || a.y2 > bounds.y2) {
+            if(a.x1 < bounds.x1 || a.x2 > bounds.x2 ||
+               (!lv_obj_has_flag(parent, LV_OBJ_FLAG_SCROLLABLE) && (a.y1 < bounds.y1 || a.y2 > bounds.y2))) {
                 fprintf(stderr, "Text outside parent: %s\n", lv_label_get_text(child));
                 return false;
             }
@@ -907,9 +1195,10 @@ static bool label_bounds(lv_obj_t *parent) {
 bool scb_ui_smoke_test(void) {
     /* The host supplies an isolated temporary database for this test. */
     if(!data_ok || player_count || selected.id) return false;
-    if(!press("diagnostics") || current != UI_HOME) return false;
+    if(!press("diagnostics") || current != UI_DIAGNOSTICS || !press("back") || current != UI_HOME) return false;
     if(!press("new-game") || current != UI_SETUP) return false;
     if(!press("mode-computer") || config.mode != 1) return false;
+    for(unsigned i = 0; i < hit_count; ++i) if(hits[i].action == A_GUIDANCE) return false;
     if(!press("clock-five") || config.minutes != 5) return false;
     if(!press("choose-white") || current != UI_PROFILES) return false;
     if(!press("create-player") || !name_input) return false;
@@ -950,6 +1239,22 @@ bool scb_ui_smoke_test(void) {
             if(a.x1 < 0 || a.y1 < 0 || a.x2 >= 720 || a.y2 >= 1280) return false;
         }
     }
+    scb_ui_show(UI_SETUP);
+    if(!press("mode-coach") || config.coach[0] != -1 || config.coach[1] != -1) return false;
+    if(!press("prepare") || current != UI_SETUP || !strstr(lv_label_get_text(status_label), "each choose")) return false;
+    if(!press("coach-white-on") || !press("coach-black-off") || config.coach[0] != 1 || config.coach[1] != 0) return false;
+    lv_refr_now(NULL);
+    if(!label_bounds(root())) return false;
+    /* 仅在隔离测试里注入长名字、长说明和占用，检查有数据时的版式。 */
+    bridge.connected = true;
+    bridge.last_state = lv_tick_get();
+    snprintf(bridge.state, sizeof(bridge.state), "{\"active\":true,\"board_connected\":true,\"board_known\":true,\"board\":\"FFFF00000000FFFF\",\"expected_board\":\"FFFF00000000FFFF\",\"guidance\":true,\"white\":\"Long player name 12345678\",\"black\":\"Another long player name\",\"fen\":\"8/8/8/8/8/8/8/8 w - - 0 1\",\"computer_move\":\"b7a8q\",\"computer_action\":{\"move\":\"b7a8q\",\"replacement\":\"queen\",\"steps\":[\"Remove the opponent's piece from a8.\",\"Move your piece from b7 to a8.\",\"Replace the pawn on a8 with a queen of the same color.\",\"Confirm the replacement below after placing it.\"]}}");
+    const UiScreen populated[] = {UI_GAME, UI_DIAGNOSTICS, UI_INSTRUCTIONS};
+    for(unsigned i = 0; i < sizeof(populated)/sizeof(populated[0]); ++i) {
+        scb_ui_show(populated[i]);
+        lv_refr_now(NULL);
+        if(!label_bounds(root())) return false;
+    }
     puts("PASS: SQLite player creation, validation, rename, reopen, selection, delete confirmation and page bounds.");
     return true;
 }
@@ -987,12 +1292,26 @@ bool scb_ui_service_test(void) {
     if(!press("view-position") || !wait_json(bridge.review, "$.move", "e2e4")) return false;
     if(!press("back") || current != UI_GAME) return false;
     if(!press("pause") || !wait_json(bridge.state, "$.paused", "1")) return false;
-    /* 删掉诊断页后，已开始的对局仍可通过基本连接入口断开并重新连接。 */
+    /* 棋盘测试复用串口；进入、扫描和返回不更改已接受的对局。 */
+    if(!press("back") || !press("diagnostics") || current != UI_DIAGNOSTICS) return false;
+    if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("scan-board")) return false;
+    if(!wait_json(bridge.state, "$.scan_timing.frame_us", "10000")) return false;
+    if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[28], 0)), "O")) return false;
+    if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[12], 0)), "")) return false;
+    if(!press("back") || !press("continue-game") || current != UI_GAME || !state_flag("$.paused")) return false;
+    if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "1")) return false;
+    if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "0")) return false;
+    /* 已开始的对局仍可通过连接入口断开并重新连接，不重置时钟。 */
     if(!press("game-connection") || current != UI_BOARD_SETUP || !config.reconnecting) return false;
     if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("connect-board")) return false;
     if(!wait_json(bridge.state, "$.board_connected", "0") || !wait_json(bridge.state, "$.usb_busy", "0")) return false;
     if(!press("connect-board") || !wait_json(bridge.state, "$.board_known", "1")) return false;
     if(!press("return-game") || current != UI_GAME || !state_flag("$.paused")) return false;
+    /* Reconnection is not fault recovery: reset must be explicitly verified. */
+    if(!press("back") || !press("diagnostics")) return false;
+    if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("reset-fault")) return false;
+    if(!wait_json(bridge.state, "$.fault", "") || !state_flag("$.paused")) return false;
+    if(!press("sensor-game") || current != UI_GAME) return false;
     if(!press("pause") || !wait_json(bridge.state, "$.paused", "0")) return false;
     if(!press("end") || !press("cancel-end") || !state_flag("$.active")) return false;
     if(!press("end") || !press("confirm-end")) return false;

@@ -19,7 +19,7 @@ def assess(timing, platform, elapsed_s, frame_delta, require_led=True):
     led_pass = (0 < platform['max_us'] < 100000 and
                 platform['late'] == 0 and platform['failed'] == 0) if require_led else None
     return {
-        'mcu_target': 'ESP32-S2-Saola-1',
+        'mcu_target': 'SCB Master PCB V2 ESP32-S3',
         "observed_full_board_hz": observed_hz,
         'scan_pass': scan_pass,
         'led_exercise_requested': require_led,
@@ -32,8 +32,8 @@ def assess(timing, platform, elapsed_s, frame_delta, require_led=True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Measure ESP32-S2 scan timing; optionally exercise external LEDs")
-    parser.add_argument("--port", default="/dev/ttyUSB0")
+    parser = argparse.ArgumentParser(description="Measure ESP32-S3 scan timing; optionally exercise external LEDs")
+    parser.add_argument("--port", default="/dev/ttyACM0")
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--exercise-leds", action="store_true",

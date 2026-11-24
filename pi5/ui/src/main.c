@@ -145,7 +145,8 @@ static bool test_window_input(SDL_Window *window, SDL_Renderer *renderer, lv_ind
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board") ||
                !test_pointer_click(window, renderer, input, 192, 666, touch != 0, "History is not loaded") ||
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board") ||
-               !test_pointer_click(window, renderer, input, 528, 666, touch != 0, "Smart Chess Board")) return false;
+               !test_pointer_click(window, renderer, input, 528, 666, touch != 0, "Board / Sensor Test") ||
+               !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board")) return false;
         }
     }
     puts("PASS: SDL mouse/touch quick clicks, player forms and back navigation at three window sizes.");
@@ -259,6 +260,14 @@ int main(int argc, char **argv) {
             if(!save_ppm(path)) { fclose(map); return 1; }
             if(i) fputc(',', map);
             fprintf(map, "\"%s\":", scb_ui_screen_name((UiScreen)i)); scb_ui_write_hotspots(map);
+        }
+        const char *variants[] = {"setup-computer", "setup-coach"};
+        for(int i = 0; i < 2; ++i) {
+            scb_ui_preview_setup(i+1);
+            snprintf(path, sizeof(path), "%s/%s.ppm", snapshots, variants[i]);
+            if(!save_ppm(path)) { fclose(map); return 1; }
+            fprintf(map, ",\"%s\":", variants[i]);
+            scb_ui_write_hotspots(map);
         }
         fputs("}}\n", map); fclose(map);
         puts("Rendered all portrait screens using the native LVGL UI."); return 0;

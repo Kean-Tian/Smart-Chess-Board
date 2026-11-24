@@ -36,6 +36,9 @@ typedef struct {
     int64_t frame_started_at, last_frame_at, debounce_started_at;
     unsigned scan_frames, frame_us, max_frame_us, scan_misses, debounce_us;
     bool armed, moving, magnet, origin_valid, magnet_wanted;
+    char fault[20]; /* Latched until an explicit safe CLEAR_FAULT command. */
+    bool snapshot_pending;
+    unsigned snapshot_id, snapshot_after;
     unsigned steps_per_tile, move_id, ignore_frames;
     int x, y, target_x, target_y;
     int64_t last_ping, next_step_at, move_started, magnet_started;

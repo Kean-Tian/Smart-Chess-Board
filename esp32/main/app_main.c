@@ -3,7 +3,7 @@
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 #include "driver/rmt_encoder.h"
-#include "driver/uart.h"
+#include "scb_transport.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
@@ -14,12 +14,18 @@
 #include "freertos/task.h"
 #include <string.h>
 
-#if !CONFIG_IDF_TARGET_ESP32S2
-#error "This firmware targets ESP32-S2-Saola-1 (esp32s2)."
+#if !CONFIG_IDF_TARGET_ESP32S3
+#error "This firmware targets SCB Master PCB V2 bare ESP32-S3."
 #endif
-_Static_assert(SOC_CPU_CORES_NUM == 1, "ESP32-S2 uses one CPU core");
-_Static_assert(SCB_PIN_UART_TX == 43 && SCB_PIN_UART_RX == 44, "Keep Saola USB-UART pins reserved");
-#define SCB_CHECK_OUTPUT(pin) _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S2 output GPIO: " #pin)
+_Static_assert(SOC_CPU_CORES_NUM == 2, "ESP32-S3 has two CPU cores");
+#if CONFIG_FREERTOS_UNICORE || CONFIG_SPIRAM
+#error "PCB V2 requires the configured dual-core S3 without PSRAM (GPIO33..38 are actuators)."
+#endif
+_Static_assert(SCB_PIN_UART_TX == 18 && SCB_PIN_UART_RX == 17, "J6 UART pins from schematic");
+#define SCB_CHECK_OUTPUT(pin) \
+    _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S3 output GPIO: " #pin); \
+    _Static_assert((pin) != 19 && (pin) != 20 && !((pin) >= 26 && (pin) <= 32), \
+                   "Output overlaps native USB or external Flash: " #pin)
 SCB_CHECK_OUTPUT(SCB_PIN_LED);
 SCB_CHECK_OUTPUT(SCB_PIN_ROW_A0);
 SCB_CHECK_OUTPUT(SCB_PIN_ROW_A1);
@@ -134,7 +140,7 @@ static void emit_frame(void *ctx, const char *line) {
     /* Dropping a complete frame under backpressure never splices two lines. */
     (void)xQueueSend(tx_queue, frame, 0);
 }
-/* Send queued reply/event lines through the onboard USB-UART bridge. */
+/* Send queued reply/event lines through the selected native USB or J6 UART transport. */
 static void serial_writer(void *unused) {
     (void)unused;
     char frame[SCB_LINE_CAPACITY];
@@ -142,9 +148,13 @@ static void serial_writer(void *unused) {
         if (xQueueReceive(tx_queue, frame, portMAX_DELAY) != pdTRUE) continue;
         size_t sent = 0, length = strlen(frame);
         while (sent < length) {
-            int n = uart_write_bytes(UART_NUM_0, frame + sent, length - sent);
+            int n = scb_transport_write(frame + sent, length - sent, pdMS_TO_TICKS(20));
             if (n > 0) sent += (size_t)n;
-            else vTaskDelay(pdMS_TO_TICKS(5));
+            else {
+                /* Delimit an incomplete frame; host must time out and reconnect. */
+                (void)scb_transport_write("\n", 1, 0);
+                break;
+            }
         }
     }
 }
@@ -163,7 +173,8 @@ static void configure_gpio(void) {
     const gpio_config_t out_config = {.pin_bit_mask = output_mask, .mode = GPIO_MODE_OUTPUT};
     configASSERT((input_mask & output_mask) == 0);
     configASSERT((input_mask & ((1ULL << SCB_PIN_LED) |
-        (1ULL << SCB_PIN_UART_TX) | (1ULL << SCB_PIN_UART_RX))) == 0);
+        (1ULL << SCB_PIN_UART_TX) | (1ULL << SCB_PIN_UART_RX) | (1ULL << SCB_PIN_USB_DM) |
+        (1ULL << SCB_PIN_USB_DP))) == 0);
     const gpio_config_t in_config = {
         .pin_bit_mask = input_mask,
         .mode = GPIO_MODE_INPUT,
@@ -172,7 +183,7 @@ static void configure_gpio(void) {
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&out_config));
-    /* GPIO1-8 only observe the sensor PCB's externally pulled-up outputs.
+    /* Sensor columns only observe the sensor PCB's externally pulled-up outputs.
      * HIGH is a measured input, not a request for this MCU to drive HIGH.
      */
     ESP_ERROR_CHECK(gpio_config(&in_config));
@@ -193,7 +204,7 @@ static void control_task(void *unused) {
             scb_core_fault(&core, "LED_OUTPUT");
         }
         scb_core_tick(&core, esp_timer_get_time());
-        int n = uart_read_bytes(UART_NUM_0, buf, sizeof(buf), 0);
+        int n = scb_transport_read(buf, sizeof(buf));
         if (n > 0) scb_core_feed(&core, buf, (size_t)n, esp_timer_get_time());
         /* Absolute scheduling avoids adding work time to every 1 ms delay. */
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(SCB_CONTROL_TICK_MS));
@@ -203,14 +214,7 @@ static void control_task(void *unused) {
 void app_main(void) {
     configure_gpio();
     esp_log_level_set("*", ESP_LOG_NONE); /* Do not mix logs into the application protocol. */
-    const uart_config_t uart = {.baud_rate = SCB_UART_BAUD,
-        .data_bits = UART_DATA_8_BITS, .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1, .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT};
-    ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart));
-    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, SCB_PIN_UART_TX, SCB_PIN_UART_RX,
-                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 2048, 2048, 0, NULL, 0));
+    ESP_ERROR_CHECK(scb_transport_init());
     tx_queue = xQueueCreate(32, SCB_LINE_CAPACITY);
     led_queue = xQueueCreate(1, sizeof(LedFrame));
     configASSERT(tx_queue && led_queue);
@@ -230,6 +234,6 @@ void app_main(void) {
         scb_core_fault(&core, "INIT");
         for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    /* One S2 CPU: priority 10 control preempts the blocking serial/LED workers. */
-    configASSERT(xTaskCreate(control_task, "scb_control", 8192, NULL, 10, NULL) == pdPASS);
+    /* Single-owner control runs on S3 core 1; workers never mutate ScbCore. */
+    configASSERT(xTaskCreatePinnedToCore(control_task, "scb_control", 8192, NULL, 10, NULL, 1) == pdPASS);
 }

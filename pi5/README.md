@@ -5,7 +5,7 @@ Use **64-bit Raspberry Pi OS Bookworm or later**.
 
 ## Touchscreen UI Design Prototype
 
-The [portrait LVGL interface](ui/README.md) targets Raspberry Pi 5 and the official **5-inch Touch Display 2 (720 x 1280, DSI)**. Run `sh pi5/ui/setup.sh`, then `sh pi5/start.sh ui` in a Pi desktop session. A private local service connects USB sensing, authoritative chess rules, monotonic clocks, local Stockfish and SQLite player/game storage. The UI supports PvP, PvC, local coaching, real board setup checks, pause/resume, saved history and read-only replay. Computer moves are executed manually on the physical board; this UI never arms motors. The [offline layout gallery](ui/preview/index.html) has no sample game or embedded database.
+The [portrait LVGL interface](ui/README.md) targets Raspberry Pi 5 and the official **5-inch Touch Display 2 (720 x 1280, DSI)**. Run `sh pi5/ui/setup.sh`, then `sh pi5/start.sh ui` in a Pi desktop session. A private local service connects USB sensing, authoritative chess rules, monotonic clocks, local Stockfish and SQLite player/game storage. The UI supports PvP, PvC, independently optional OpenRouter AI coaching for White and Black, real board setup checks, pause/resume, saved history, read-only replay, real player statistics, live Board/Sensor Test and local guidance in Two players mode. Vs computer has no Guidance/Hint control. Computer instructions describe the manual piece actions and replacement confirmation. Computer moves are executed manually on the physical board; this UI never arms motors. The [offline layout gallery](ui/preview/index.html) has no sample game or embedded database.
 
 ## Run
 
@@ -27,7 +27,7 @@ sh start.sh
 sh start.sh play --opponent local --skill 10 --movetime 3000
 sh start.sh play --opponent openrouter
 sh start.sh play --coaching --coach-white off --coach-black on
-sh start.sh board --port /dev/ttyUSB0
+sh start.sh board --port /dev/ttyACM0
 ```
 
 - `test`: checks Stockfish communication and moves; no ESP32 is required.
@@ -126,7 +126,7 @@ The shared library is placed in `build/lib/`, and the console in `build/bin/`. T
 Set `STOCKFISH_EXECUTABLE` to select a Stockfish executable for another platform. The Pi defaults to the bundled Linux ARM64 version; the entry point for the current Mac is in the project root.
 
 The Pi maintains the chess rules and logical board state. Both Stockfish and OpenRouter results must pass rules validation. After an illegal move, the physical board must be restored. Use `commit <uci>` to resolve promotions or ambiguous multi-square changes; matching occupancy is still required.
-This directory does not access Pi GPIO. All hardware operations are sent through the ESP32-S2-Saola-1 USB-UART protocol. The current connection uses MCU UART0 GPIO43/44 at 115200 baud; it does not require Pi GPIO wiring.
+This directory does not access Pi GPIO. All hardware operations are sent through the SCB Master PCB V2 (ESP32-S3) native USB protocol on GPIO19/20 (J5). Optional wired-UART firmware uses TX18/RX17 at J6; USB requires no Pi GPIO wiring.
 
 ## Square LED Move Hints
 
@@ -142,8 +142,8 @@ For two steady lights immediately (source blue, destination green), use:
 
 ```sh
 # From the project root; replace the USB port as needed.
-sh pi5/start.sh board --port /dev/ttyUSB0 --opponent local --led-hints both
-sh pi5/start.sh board --port /dev/ttyUSB0 --coaching --coach-white on --coach-black off --led-hints both
+sh pi5/start.sh board --port /dev/ttyACM0 --opponent local --led-hints both
+sh pi5/start.sh board --port /dev/ttyACM0 --coaching --coach-white on --coach-black off --led-hints both
 ```
 
 Omit `--led-hints both` for the staged sequence. Timing runs in the Pi board loop
@@ -180,7 +180,7 @@ completion or Ctrl+C. The first command ignores sensors and verifies that e4
 starts blinking after 5 seconds. Use the second command with e2 occupied, then
 lift the piece within 5 seconds to test the earlier sensor trigger. Without
 connected sensors, use `--timer-only` or both-steady mode. On the Pi,
-use `pi5/.venv/bin/python` and the actual port, commonly `/dev/ttyUSB0`.
+use `pi5/.venv/bin/python` and the actual port, commonly `/dev/ttyACM0`.
 
 To check on hardware, start with a synchronized board and request a computer move
 or coaching hint. Leave the source piece in place for 5 seconds and check that
@@ -197,10 +197,10 @@ Game search defaults to 3000 ms, one engine thread, and a 16 MiB Hash table in P
 
 Run `python3 app/board_diagnostics.py --help` for target timing measurements over USB. Diagnostic engine searches may explicitly use shorter times than the game interface. See [Specification alignment](../docs/Specification_Alignment.md) for hardware validation limits.
 
-## ESP32-S2 Sensor Bench Tests
+## ESP32-S3 Sensor Bench Tests
 
-From the project root, use `esp32/.venv/bin/python pi5/app/scb_link.py --port PORT` for live sensor diagnostics. On a configured Pi, run `.venv/bin/python app/scb_link.py --port /dev/ttyUSB0` from this directory. Replace PORT with the detected device. The terminal shows MUX selection, DIG_OUT1..8 levels and readable occupied squares without waiting for Enter. These are logical coordinates; physical orientation still needs calibration.
+From the project root, use `esp32/.venv/bin/python pi5/app/scb_link.py --port PORT` for live sensor diagnostics. On a configured Pi, run `.venv/bin/python app/scb_link.py --port /dev/ttyACM0` from this directory. Replace PORT with the detected device. The terminal shows MUX selection, DIG_OUT1..8 levels and readable occupied squares without waiting for Enter. These are logical coordinates; physical orientation still needs calibration.
 
-For scan-only timing, run `.venv/bin/python app/board_diagnostics.py --port /dev/ttyUSB0 --seconds 10 --output runtime/S2_Scan_Timing.json`. LED verification is omitted and reported as null unless `--exercise-leds` is explicitly provided. This mode does not ARM or move motors. Only one process may own the serial port at a time.
+For scan-only timing, run `.venv/bin/python app/board_diagnostics.py --port /dev/ttyACM0 --seconds 10 --output runtime/S3_Scan_Timing.json`. LED verification is omitted and reported as null unless `--exercise-leds` is explicitly provided. This mode does not ARM or move motors. Only one process may own the serial port at a time.
 
-See the [S2 test guide](../docs/ESP32_S2_Test_Guide.md), [connection map](../docs/PCB_Connection_Map.md) and [current validation record](../docs/validation/latest.json). Computer tests and target compilation do not establish that this application has run on a Pi 5.
+See the [S3 test guide](../docs/ESP32_S3_Test_Guide.md), [connection map](../docs/PCB_Connection_Map.md) and [current validation record](../docs/validation/latest.json). Computer tests and target compilation do not establish that this application has run on a Pi 5.

@@ -61,7 +61,9 @@ class EmulatedMcu:
                 elif command == "TIMING":
                     self.send(f"TIMING {ident} frames=500 frame_us=10000 max_us=11000 misses=0 debounce_us=10000\n")
                 elif command == "STATUS":
-                    self.send(f"STATUS {ident} armed=0 moving=0 magnet=0 origin=0 steps=0 polarity=HIGH\n")
+                    self.send(f"STATUS {ident} armed=0 moving=0 magnet=0 origin=0 steps=0 polarity=HIGH fault=NONE\n")
+                elif command == "SNAPSHOT":
+                    self.send(f"SNAPSHOT {ident} occupy={self.mask:016X} frame=100 fault=NONE\n")
                 else:
                     self.send(f"ACK {ident} {command}\n")
 
@@ -77,6 +79,77 @@ class EmulatedMcu:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_coaching_choices_are_independent_and_off_turn_cannot_request_advice(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = GameStore(Path(temp) / "players.sqlite3")
+            store.db.execute("INSERT INTO players(name) VALUES('White player')")
+            store.db.execute("INSERT INTO players(name) VALUES('Black player')")
+            store.db.commit()
+            core = UiCore(store)
+            try:
+                settings = {"cmd": "prepare", "mode": "coach", "white_id": 1, "black_id": 2, "minutes": 0}
+                with self.assertRaises(ValueError): core.handle(settings)
+                core.handle(dict(settings, coach_white=False, coach_black=False))
+                core.session.connection(True)
+                core.session.on_board(START_OCCUPANCY)
+                core.session.check()
+                core.handle({"cmd": "start", "verified": True})
+                with self.assertRaises(ValueError): core.handle({"cmd": "hint"})
+                core.handle({"cmd": "coaching", "side": "b", "enabled": True})
+                self.assertFalse(core.state()["coach_white"])
+                self.assertTrue(core.state()["coach_black"])
+                self.assertIsNone(core.session.search)
+                with self.assertRaises(ValueError): core.handle({"cmd": "guidance", "enabled": True})
+                core.session.end()
+                core.handle(dict(settings, mode="pvc", human="w"))
+                core.session.on_board(START_OCCUPANCY)
+                core.session.check()
+                core.handle({"cmd": "start", "verified": True})
+                with self.assertRaises(ValueError): core.handle({"cmd": "hint"})
+                self.assertIsNone(core.session.search)
+            finally:
+                core.close()
+                store.close()
+
+    def test_diagnostics_empty_stale_timing_and_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = GameStore(Path(temp) / "players.sqlite3")
+            class Link:
+                _failure = None
+                def __init__(self): self.events, self.commands = queue.Queue(), []
+                def request(self, cmd, **kwargs):
+                    self.commands.append(cmd)
+                    if cmd == "TIMING": return Frame("TIMING", 1, "frames=12 frame_us=10000 max_us=11000 misses=0 debounce_us=10000")
+                    if cmd == "STATUS": return Frame("STATUS", 1, "armed=0 moving=0 magnet=0")
+                    if cmd == "SCAN": self.events.put(Frame("BOARD", None, "0000000000000000"))
+                    return Frame("ACK", 1, cmd)
+                def close(self): pass
+            core = UiCore(store)
+            core.link = Link()
+            core.session.connection(True)
+            core.last_poll = core.last_ports = core.now()
+            try:
+                core.handle({"cmd": "scan"})
+                for _ in range(100):
+                    core.update()
+                    if not core.job: break
+                    time.sleep(0.005)
+                state = core.state()
+                self.assertTrue(state["board_known"])
+                self.assertEqual(state["board"], "0000000000000000")
+                self.assertEqual(state["scan_timing"]["frame_us"], 10000)
+                self.assertIsNotNone(state["scan_round_trip_ms"])
+                self.assertEqual([c for c in core.link.commands if c != "LED_CLEAR"], ["SCAN", "STATUS", "TIMING"])
+                self.assertEqual(store.history()["total"], 0)
+                core.link.events.put(Frame("BOARD", None, "not-a-board"))
+                core.update()
+                self.assertFalse(core.state()["board_known"])
+                self.assertIsNone(core.state()["board"])
+                self.assertIn("Invalid", core.state()["error"])
+            finally:
+                core.close()
+                store.close()
+
     def test_saved_rotation_is_ignored_and_raw_coordinates_are_preserved(self):
         with tempfile.TemporaryDirectory() as temp:
             store = GameStore(Path(temp) / "players.sqlite3")
@@ -138,8 +211,23 @@ class ServiceTests(unittest.TestCase):
                 self.assertEqual(store.history()["total"], 1)
                 core.handle({"cmd": "pause"})
                 core.handle({"cmd": "pause"})
+                class Link:
+                    _failure = None
+                    events = queue.Queue()
+                    def request(self, cmd, **kwargs):
+                        if cmd == "STATUS": return Frame("STATUS", 1, "armed=0 moving=0 magnet=0 fault=NONE")
+                        if cmd == "SNAPSHOT": return Frame("SNAPSHOT", 1, f"occupy={START_OCCUPANCY:016X} frame=1 fault=NONE")
+                        return Frame("ACK", 1, cmd)
+                    def close(self): pass
+                core.link = Link()
+                core.last_ports = core.last_poll = core.now()
                 core.handle({"cmd": "resume"})
                 core.handle({"cmd": "resume"})
+                for _ in range(100):
+                    core.update()
+                    if not core.job: break
+                    time.sleep(.005)
+                self.assertFalse(core.session.paused)
                 core.handle({"cmd": "end", "result": "1/2-1/2"})
                 core.handle({"cmd": "end", "result": "1-0"})
                 self.assertEqual(store.review(core.session.game_id, 0)["result"], "1/2-1/2")
@@ -204,8 +292,9 @@ class ServiceTests(unittest.TestCase):
                     self.assertEqual(connection.execute("SELECT status FROM games").fetchone()[0], "completed")
                     self.assertEqual(connection.execute("SELECT count(*) FROM players").fetchone()[0], 2)
                     connection.close()
-                    self.assertFalse(any(cmd.split()[0] in {"ARM", "MOVE", "GOTO", "JOG", "MAGNET",
-                                                           "TIMING", "MARK", "LED_CLEAR"} for cmd in mcu.commands))
+                    self.assertFalse(any(cmd.split()[0] in {"ARM", "MOVE", "GOTO", "JOG", "MAGNET"} for cmd in mcu.commands))
+                    self.assertIn("LED_CLEAR", mcu.commands)
+                    self.assertIn("TIMING", mcu.commands)
                 finally:
                     if ui and ui.poll() is None:
                         ui.kill()

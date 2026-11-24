@@ -1,0 +1,10 @@
+menu "SCB local communication"
+choice SCB_LINK_TRANSPORT
+    prompt "Application protocol transport"
+    default SCB_LINK_USB
+config SCB_LINK_USB
+    bool "J5 native USB Serial/JTAG (GPIO19/20)"
+config SCB_LINK_UART
+    bool "J6 wired 3.3 V UART1 (TX GPIO18, RX GPIO17)"
+endchoice
+endmenu

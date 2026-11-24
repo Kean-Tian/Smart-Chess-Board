@@ -6,14 +6,19 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 SCREENS = {
-    "home": ("主菜单", "新游戏、真实 SQLite 玩家库和已保存对局；Diagnostics 保持普通卡片样式，点击不跳转。"),
-    "setup": ("新游戏设置", "选择双人、人机或本地 Stockfish 指导；选择真实玩家、执棋方和时间。"),
+    "home": ("主菜单", "新游戏、真实 SQLite 玩家库、已保存对局和独立棋盘测试。"),
+    "setup": ("新游戏设置", "选择双人、人机或在线 AI coaching；双方独立选择是否需要 coaching。"),
+    "setup-computer": ("人机设置", "选择玩家、执棋方和时间；不显示 Guidance 或 Hint。"),
+    "setup-coach": ("AI coaching 设置", "白方和黑方都要明确选择 ON/OFF，支持四种组合。"),
+    "coaching": ("AI coaching", "使用实际 OpenRouter 建议和解释；按当前回合和独立开关请求，失败可重试。"),
     "profiles": ("玩家库", "SQLite 玩家列表初始为空；创建、重命名、选择和删除均永久保存。"),
     "player-editor": ("创建玩家", "输入名称并保存到数据库，支持屏幕键盘、实体键盘及粘贴。"),
     "board-setup": ("摆棋和检查", "选择并连接棋盘，检查目标初始布局；真实占用匹配且人工确认棋子后才能开始。"),
     "game": ("实时对局", "显示后台提供的双方时钟、回合、走法和提示。离线截图没有虚构的对局数据。"),
     "move-editor": ("确认特殊走法", "无法从占用唯一识别的走法可手动输入 UCI，仍需通过合法性和实体占用检查。"),
     "history": ("历史记录", "从 SQLite 读取真实对局，包括未完成的局和实际结果。"),
+    "diagnostics": ("棋盘测试", "固定坐标显示真实占用；断线显示未知，连接后可请求扫描周期和 USB 往返时间。"),
+    "instructions": ("电脑走法操作说明", "按实际电脑走法给出移除、移动和替换棋子的步骤；需要替换时人工确认。"),
     "review": ("真实棋谱回放", "读取保存的每步局面；没有记录时不会生成示例棋谱，也不会移动实体棋子。"),
 }
 
@@ -57,7 +62,7 @@ def main():
     page = page.replace("__MAPS__", json.dumps(maps))
     (args.destination / "index.html").write_text(page)
     (args.destination / "hotspots.json").write_text(json.dumps(maps, indent=2) + "\n")
-    names = ["home", "profiles", "player-editor", "setup", "history", "board-setup"]
+    names = ["home", "profiles", "player-editor", "setup", "diagnostics", "board-setup"]
     sheet = Image.new("RGB", (1080, 1368), "#eeece6")
     draw = ImageDraw.Draw(sheet)
     try:

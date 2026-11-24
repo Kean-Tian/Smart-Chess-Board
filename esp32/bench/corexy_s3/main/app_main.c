@@ -1,7 +1,7 @@
 #include "bench_pins.h"
 #include "motor_bench.h"
 #include "driver/gpio.h"
-#include "driver/uart.h"
+#include "scb_transport.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -9,10 +9,10 @@
 #include "freertos/task.h"
 #include <string.h>
 
-#if !CONFIG_IDF_TARGET_ESP32S2
-#error "This test harness is for ESP32-S2-Saola-1, not the final S3 PCB."
+#if !CONFIG_IDF_TARGET_ESP32S3
+#error "This test harness is for SCB Master PCB V2 ESP32-S3, not the final S3 PCB."
 #endif
-#define CHECK_OUTPUT(pin) _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S2 GPIO: " #pin)
+#define CHECK_OUTPUT(pin) _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S3 GPIO: " #pin)
 CHECK_OUTPUT(SCB_BENCH_A_STEP);
 CHECK_OUTPUT(SCB_BENCH_A_DIR);
 CHECK_OUTPUT(SCB_BENCH_B_STEP);
@@ -39,9 +39,9 @@ static void serial_writer(void *ctx) {
         if (xQueueReceive(tx_queue, frame, portMAX_DELAY) != pdTRUE) continue;
         size_t sent = 0, length = strlen(frame);
         while (sent < length) {
-            int n = uart_write_bytes(UART_NUM_0, frame + sent, length - sent);
+            int n = scb_transport_write(frame + sent, length - sent, pdMS_TO_TICKS(20));
             if (n > 0) sent += (size_t)n;
-            else vTaskDelay(pdMS_TO_TICKS(5));
+            else { (void)scb_transport_write("\n", 1, 0); break; }
         }
     }
 }
@@ -59,13 +59,7 @@ void app_main(void) {
     const gpio_config_t gpio = {.pin_bit_mask = mask, .mode = GPIO_MODE_OUTPUT};
     ESP_ERROR_CHECK(gpio_config(&gpio));
     esp_log_level_set("*", ESP_LOG_NONE);
-    const uart_config_t uart = {.baud_rate = 115200, .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE, .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE, .source_clk = UART_SCLK_DEFAULT};
-    ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart));
-    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, SCB_BENCH_UART_TX, SCB_BENCH_UART_RX,
-                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 2048, 2048, 0, NULL, 0));
+    ESP_ERROR_CHECK(scb_transport_init());
     tx_queue = xQueueCreate(32, SCB_BENCH_LINE_CAPACITY); configASSERT(tx_queue);
     configASSERT(xTaskCreate(serial_writer, "motor_bench_tx", 3072, NULL, 4, NULL) == pdPASS);
     const ScbMotorPins motor_pins = {.step = {SCB_BENCH_A_STEP, SCB_BENCH_B_STEP},
@@ -75,7 +69,7 @@ void app_main(void) {
     TickType_t wake = xTaskGetTickCount();
     for (;;) {
         scb_motor_bench_tick(&bench, esp_timer_get_time());
-        uint8_t bytes[64]; int n = uart_read_bytes(UART_NUM_0, bytes, sizeof(bytes), 0);
+        uint8_t bytes[64]; int n = scb_transport_read(bytes, sizeof(bytes));
         if (n > 0) scb_motor_bench_feed(&bench, bytes, (size_t)n, esp_timer_get_time());
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(1));
     }

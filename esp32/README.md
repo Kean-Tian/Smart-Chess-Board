@@ -1,91 +1,49 @@
-# ESP32-S2-Saola-1 Firmware
+# SCB Master PCB V2 Firmware — ESP32-S3
 
-The current firmware targets **ESP32-S2-Saola-1**, a single-core Xtensa ESP32-S2 board with 4 MB Flash. WROOM/WROVER variants are supported with PSRAM disabled. Use the current jumper wiring in [PCB connections](../docs/PCB_Connection_Map.md); the older Master PCB MCU footprint is a separate hardware design.
+This replaces the S2 development-board target with the bare ESP32-S3 and external W25Q128JVS (16 MB) shown in the supplied V2 schematic. It retains scanning, two-frame debounce, move events, LED feedback, watchdogs and guarded motion commands. No PSRAM or MCU chess engine is enabled. See [exact cable/GPIO map](../docs/PCB_Connection_Map.md).
 
-## Files
+**Motor STEP/DIR differ between the supplied schematic and PCB pad nets.** The user confirmed the board was fabricated from the supplied PCB. Default is `CONFIG_SCB_MOTOR_PCB_ROUTING=y`: X STEP=35/DIR=34 and Y STEP=37/DIR=36. Actuators stay disabled until explicit commands and calibration. A firmware build does not establish physical motion accuracy or collision-free travel.
 
-| Path | Purpose |
-|---|---|
-| `main/board_pins.h` | Current S2 GPIO map, sensor polarity, orientation flags and timing settings |
-| `main/scb_core.c` | Complete-board scanning, debouncing, sensor traces, commands, motion and watchdogs |
-| `main/app_main.c` | GPIO/UART initialization, single-core tasks and external RMT LED output |
-| `tests/` | Portable control-logic tests with simulated GPIO |
-| `bench/` | Optional fixed-MUX test firmware; does not run full-board scanning |
-| `scripts/package_release.py` | Export a fresh target build and checked image manifest |
-| `scripts/flash_firmware.py` | Validate release hashes, addresses and S2 image headers before flashing |
-| `release/` | Main full-scan firmware images; consult the manifest for their build date |
+## Build
 
-## Build the Main Firmware
-
-Activate **ESP-IDF 5.5.3** and its matching Xtensa toolchain, then run from `esp32/`:
+Use ESP-IDF 5.5.3 or newer, validated here with 5.5.3. Use a NEW build directory; do not reuse an S2 sdkconfig/build cache:
 
 ```sh
-idf.py set-target esp32s2
-idf.py build
-python scripts/package_release.py --build-dir build
+cd esp32
+idf.py -B build-s3 -D SDKCONFIG=sdkconfig.s3 set-target esp32s3
+idf.py -B build-s3 -D SDKCONFIG=sdkconfig.s3 menuconfig
+idf.py -B build-s3 -D SDKCONFIG=sdkconfig.s3 build
+python scripts/package_release.py --build-dir build-s3
 ```
 
-Use a clean build when changing chip targets. Images for classic ESP32, C5 or S3 are not interchangeable with this firmware. Defaults are 4 MB DIO/40 MHz Flash, 240 MHz CPU, a 1 kHz FreeRTOS tick and no PSRAM. A post-link check limits static internal RAM to 264 KiB; dynamic heap allocations must be checked separately.
+Settings: 16 MB DIO/40 MHz Flash, 240 MHz dual-core S3, no PSRAM, 1 kHz FreeRTOS tick. The single-owner control task is pinned to core 1; serial and RMT workers do not mutate the controller state. Static internal RAM is limited to 264 KiB as a project control ceiling, not as the S3's total memory capacity.
 
-## Flash the Main Release
+Menuconfig: **SCB local communication** selects J5 native USB Serial/JTAG (default) or J6 wired UART1. **SCB PCB V2 wiring** selects the verified motor copper variant and optional custom name-crossed cable. Default cable is straight IDC16 pin n to pin n; firmware compensates its crossed signal labels.
 
-Run from the project root. On a new computer, prepare the environment:
+## Flash
+
+From the repository root:
 
 ```sh
 python3 -m venv esp32/.venv
 esp32/.venv/bin/python -m pip install esptool==4.12.0 pyserial==3.5
 esp32/.venv/bin/python -m serial.tools.list_ports -v
+esp32/.venv/bin/python esp32/scripts/flash_firmware.py --port ACTUAL_PORT --dry-run
+esp32/.venv/bin/python esp32/scripts/flash_firmware.py --port ACTUAL_PORT
 ```
 
-Close the SCB terminal or any other serial monitor. Replace `PORT` with the detected port, for example `/dev/cu.usbserial-2140` on the current Mac or `/dev/ttyUSB0` on Linux:
+Use the enumerated S3 native USB port, typically `/dev/cu.usbmodem...` on macOS or `/dev/ttyACM0` on Pi. Bootloader is at **0x0** (S3), partition table at 0x8000, application at 0x10000. Never use the old S2 bootloader offset 0x1000 or force a chip mismatch. The helper validates chip ID, flash size, addresses and checksums before opening the port.
+
+J5 VBUS is unconnected: provide the intended external board supply, with actuator power disconnected during initial flash/tests. Enter download mode if needed: hold BOOT, press/release RESET, then release BOOT. The J6 application UART pins 18/17 are not the unconnected ROM UART0 pins 43/44. GPIO19/20 remain reserved for native USB even in a wired-UART application build.
+
+## Test
 
 ```sh
-esp32/.venv/bin/python esp32/scripts/flash_firmware.py --port PORT --baud 57600 --no-compress --dry-run
-esp32/.venv/bin/python esp32/scripts/flash_firmware.py --port PORT --baud 57600 --no-compress
+sh esp32/tests/run_core_tests.sh
+esp32/.venv/bin/python pi5/tests/pcb_mapping_tests.py
+esp32/.venv/bin/python pi5/app/scb_link.py --port ACTUAL_PORT
 ```
 
-The lower baud and uncompressed writes succeeded during earlier S2 upload troubleshooting. The helper also supports its normal 115200-baud compressed mode without these options. Baud changes here affect flashing only; application communication remains 115200.
+Use PING, STATUS, SCAN, RAW, INPUTS, TIMING and PLATFORM. HELLO is `SCB_MASTER_PCB_V2_S3 1`. Protocol and Pi UI behavior are retained. A port name or ACK alone is not proof of correct physical sensing or LED illumination. Start with an empty board and one magnet, verify polarity and all 64 coordinates, then test external LEDs. No automatic calibration hides false occupancy. Native USB is not Wi-Fi and does not require internet.
 
-The helper validates every image hash, S2 image chip ID 2, and addresses `0x1000` (bootloader), `0x8000` (partitions), `0x10000` (application). It does not erase the entire chip or force a chip mismatch. If automatic download fails, hold BOOT, press and release RESET, then release BOOT when esptool connects. Press RESET after flashing if the application does not start.
-
-## Test the Connected Board
-
-Follow [the S2 test guide](../docs/ESP32_S2_Test_Guide.md) for staged USB, sensor, timing and optional actuator tests. Start with actuator power disconnected.
-
-```sh
-esp32/.venv/bin/python pi5/app/scb_link.py --port PORT
-```
-
-The main firmware identifies itself as `HELLO SCB_S2_SAOLA_1 1`. HELLO is sent once at startup and may precede the host connection; use PING/STATUS as repeatable checks. The terminal performs an initial SCAN and displays sensor changes without waiting for keyboard input.
-
-```text
-PING
-STATUS
-INPUTS
-SCAN
-RAW
-TIMING
-PLATFORM
-```
-
-`INPUTS` reads the eight electrical levels for whichever row is selected at that instant. `SCAN` reports the latest stable **complete 64-square board**; it does not start a one-row scan. Raw input levels and row addresses in `SENSOR` messages were captured with the accepted board frame. Occupancy is displayed as square names, while the wire mask remains 16 hexadecimal digits.
-
-Sensor defaults are **HIGH = occupied**, MUX A0/A1/A2 = GPIO36/37/38 and DIG_OUT1..8 = GPIO1..8. Row and column orientation flags are currently zero. Physical orientation is **not calibrated**: the user reported that the physical lower-left sensor displayed `h1`. Do not label a raw row as top/bottom until all four corners and all 64 positions have been verified. No orientation flip has been applied based on that one observation.
-
-## Scheduling and Outputs
-
-The single-core control task runs at priority 10, serial output at 4 and LED output at 3. No task is pinned to a nonexistent second core. Scanning targets a 10 ms complete-frame period, with 1 ms row settling and two matching complete frames for debounce. TIMING reports observed frame periods and overruns.
-
-The external RGB data pin is **GPIO17**. The board's GPIO18 RGB LED is unused. RMT uses a 128-symbol hardware buffer, interrupt refilling without DMA, 10 MHz ticks, GRB bytes and a 300 us reset interval. A one-entry queue keeps the latest pending LED state. ACK confirms acceptance, not physical illumination. PLATFORM reports queue-to-RMT-completion timing and internal free/minimum heap. LED channel values are capped at 32/255. Actual LED waveform and optical response remain unverified.
-
-Motion remains bench-level X-then-Y pulse control. HOME returns `NO_HOME_SWITCHES`; ORIGIN records manual alignment. DONE confirms pulse completion, not successful piece transport. Automatic homing, collision avoidance and capture handling are not implemented. Boot, STOP, watchdog and LED-failure handling disable motion and release the electromagnet. STOP does not stop board scanning or mute serial reports.
-
-## Host Tests
-
-From `esp32/`:
-
-```sh
-sh tests/run_core_tests.sh
-```
-
-The root CMake/CTest entry and `sh SCB_Computer_Test.command --check-only` also run the S2-mapped portable core. These use simulated inputs and do not open a serial port. Test coverage and the distinction between software results and hardware observations are documented in the S2 test guide and [validation record](../docs/validation/latest.json).
+See [test guide](../docs/ESP32_S3_Test_Guide.md), [protocol](../docs/USB_Protocol.md) and [bench applications](bench/README.md). Calibration is volatile. HOME remains unavailable because no home switches are connected. The main firmware preserves its existing guarded X/Y motion algorithm; the separate CoreXY bench requires explicit measured coefficients/scale/limits/profile. No physical actuator motion has been validated by host tests.

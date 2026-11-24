@@ -1,9 +1,9 @@
 # CoreXY motor control component
 
-Shared C component for the final ESP32-S3 application and the current ESP32-S2
+Shared C component for the final ESP32-S3 application and the current ESP32-S3
 bench. It uses ESP-IDF's existing component build and a GPIO-write callback, with
 no chip-specific pin numbers, dependencies beyond the C library, allocations,
-tasks, interrupts or delays. The S2 harness is in [bench/corexy_s2](../../bench/corexy_s2/README.md).
+tasks, interrupts or delays. The S3 harness is in [bench/corexy_s3](../../bench/corexy_s3/README.md).
 
 ## Existing project and integration boundary
 
@@ -13,17 +13,7 @@ the existing line protocol, motion watchdogs and electromagnet. Sensor/LED logic
 lives in `components/board_logic`. Its existing motor routine is a bench-level,
 independent X-then-Y pulse generator, not CoreXY kinematics.
 
-The checked-out application targets LOLIN32/classic ESP32; remote commit
-`8bdddda` targets ESP32-S2-Saola-1. The team confirmed that S2 is the current test
-board and S3 is the intended final board. This addition does not migrate either
-application or change any existing pin map. The **final S3 GPIO assignment and
-mechanical calibration are still unconfirmed**.
-
-The main component declares the new component as a dependency so it is available
-to existing firmware. The current `app_main.c` and `scb_core.c` are unchanged;
-their existing commands still use their original motion implementation. Use the
-separate S2 bench to test this new module. Production command routing to CoreXY
-must be enabled explicitly when the final board map and calibration are known.
+The firmware now targets the custom SCB Master PCB V2 ESP32-S3. GPIO maps follow the supplied schematic, with an explicit alternative for the supplied PCB STEP/DIR pad-net discrepancy; see [connection map](../../../docs/PCB_Connection_Map.md). The main chess core retains its existing guarded X-then-Y pulse routine. This board-independent CoreXY module is exercised by the separate S3 bench; production CoreXY routing, belt mapping, mechanical scale and collision handling are not inferred from the electrical schematic.
 
 ## Calibration and coordinate convention
 
@@ -85,7 +75,7 @@ invented. Both absolute and independent-motor moves require a reference.
 At normal completion STEP is LOW and the drivers **remain enabled** to hold the
 known position. Any disable, stop, clock reversal or output failure invalidates
 it. The integrating application must maintain an arm/heartbeat interlock and
-call stop on faults, stale links and shutdown. The S2 bench implements those
+call stop on faults, stale links and shutdown. The S3 bench implements those
 interlocks with the existing 2 s link / 30 s motion budgets.
 
 ## Pulse scheduling and limits
@@ -139,9 +129,9 @@ Only these existing files are changed by the motor addition:
 | `esp32/main/CMakeLists.txt` | Add `motor_control` to existing component dependencies |
 | `esp32/tests/CMakeLists.txt` | Register the new host test executable with CTest |
 | `esp32/tests/run_core_tests.sh` | Compile/run the new tests with the existing sanitizer setup |
-| `esp32/README.md` | Link to the component and S2 bench instructions |
+| `esp32/README.md` | Link to the component and S3 bench instructions |
 
-All implementation, S2 harness, calibration parser and motor tests are new files.
+All implementation, S3 harness, calibration parser and motor tests are new files.
 Existing application functions, GPIO assignments, protocol, sensor/LED code,
 electromagnet code, Pi code and release images are unchanged by this addition.
 Pre-existing uncommitted Pi/LED changes are separate from this work.
@@ -151,6 +141,6 @@ sanitization; the root CMake build and all 11 CTest suites pass. This Mac needed
 an explicit system C++ header search path in the temporary build configuration
 (`-DCMAKE_CXX_FLAGS=-isystem /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1`);
 no repository/compiler setup was changed. The local shell has no `idf.py` or activated ESP-IDF toolchain, so an
-ESP32-S2/S3 firmware build, flashing, GPIO waveforms, motor directions, actual
+ESP32-S3/S3 firmware build, flashing, GPIO waveforms, motor directions, actual
 travel, force/current/thermal behavior and the final S3 integration still need
 validation in the hardware environment.

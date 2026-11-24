@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 from scb_link import (ScbLink, DeviceError, Frame, parse_frame, format_frame,
                       format_scan_timing, print_scan_report)
 
-SENSOR_LINE = (b"SENSOR frame=2 mux=000 A0=36:0 A1=37:0 A2=38:0 "
+SENSOR_LINE = (b"SENSOR frame=2 mux=000 A0=6:0 A1=5:0 A2=4:0 "
                b"inputs=00000001 occupy=0000000000000080 polarity=HIGH\n")
 
 
@@ -70,7 +70,7 @@ class LinkTests(unittest.TestCase):
         frame = parse_frame(SENSOR_LINE.decode())
         self.assertEqual((frame.kind, frame.request_id), ("SENSOR", None))
         self.assertEqual(format_frame(frame),
-                         "MUX(A2,A1,A0)=000 [GPIO36,37,38=000] | "
+                         "MUX(A2,A1,A0)=000 [GPIO6,5,4=000] | "
                          "INPUTS(DIG_OUT1..8)=00000001 | "
                          "OCCUPY=h1 | frame=2")
         malformed = parse_frame("SENSOR incomplete")
@@ -101,7 +101,7 @@ class Port(FakeSerial):
         super().__init__()
     def open(self):
         def changed():
-            self.incoming.put(b"SENSOR frame=777 mux=001 A0=36:1 A1=37:0 A2=38:0 inputs=10000000 occupy=0000000000000100 polarity=HIGH\\n")
+            self.incoming.put(b"SENSOR frame=777 mux=001 A0=6:1 A1=5:0 A2=4:0 inputs=10000000 occupy=0000000000000100 polarity=HIGH\\n")
         timer = threading.Timer(0.9, changed)
         timer.daemon = True
         timer.start()
@@ -133,7 +133,7 @@ runpy.run_path(str(root / "pi5/app/scb_link.py"), run_name="__main__")
                 process.communicate()
         self.assertEqual(process.returncode, 0, errors)
         self.assertIn("MUX(A2,A1,A0)=001", output, errors)
-        self.assertIn("[GPIO36,37,38=100]", output)
+        self.assertIn("[GPIO6,5,4=100]", output)
         self.assertIn("OCCUPY=a2 | frame=777", output)
         self.assertEqual(output.count("Last full-board period=12.345 ms"), 2)
         self.assertIn("Maximum period=18.000 ms", output)

@@ -9,7 +9,7 @@
 #define SCB_UI_HEIGHT 1280
 typedef enum {
     UI_HOME, UI_SETUP, UI_PROFILES, UI_HISTORY,
-    UI_PLAYER_EDITOR, UI_BOARD_SETUP, UI_GAME, UI_REVIEW, UI_MOVE_EDITOR, UI_SCREEN_COUNT
+    UI_PLAYER_EDITOR, UI_BOARD_SETUP, UI_GAME, UI_REVIEW, UI_MOVE_EDITOR, UI_DIAGNOSTICS, UI_INSTRUCTIONS, UI_COACHING, UI_SCREEN_COUNT
 } UiScreen;
 
 void scb_ui_init(const char *database_path);
@@ -23,4 +23,5 @@ void scb_ui_write_hotspots(FILE *output);
 bool scb_ui_smoke_test(void);
 bool scb_ui_service_test(void);
 const char *scb_ui_screen_name(UiScreen screen);
+void scb_ui_preview_setup(int mode);
 #endif

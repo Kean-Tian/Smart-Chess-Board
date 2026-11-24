@@ -1,57 +1,20 @@
-# ESP32-S2 CoreXY motor bench
+# SCB Master PCB V2 CoreXY Bench — ESP32-S3
 
-Standalone ESP-IDF application for the team's current ESP32-S2-Saola-1 test
-board. It uses the same [shared motor component](../../components/motor_control/README.md)
-intended for final ESP32-S3 integration. It has its own build directory and does
-not change the existing chess firmware's tasks, UART protocol, LEDs or sensors.
-Flashing this bench replaces the application on the test S2; keep a separately
-verified normal S2 firmware available to restore afterwards.
+Standalone S3 test firmware using the same GPIO header and native USB/J6 UART transport as the main firmware. Flashing it replaces the chess application. It does not run chess sensing/UI/LED feedback and keeps EM_CTRL LOW. Restore the normal release after the bench test.
 
-## Recorded S2 harness
+The supplied schematic and PCB swap STEP/DIR on both motor drivers. Select the appropriate `SCB_MOTOR_PCB_ROUTING` option, as explained in the [connection map](../../../docs/PCB_Connection_Map.md). No calibration or direction is inferred from electrical signal names.
 
-These are copied from remote commit
-[`8bdddda`](https://github.com/Kean-Tian/Smart-Chess-Board/blob/8bdddda0641941a8b874d10a5b7bba080d39f451/esp32/main/board_pins.h),
-not inferred from the local LOLIN32 configuration or final S3 PCB.
-Confirm the actual jumpers match before attaching drivers.
-
-| Signal | S2 GPIO |
-|---|---:|
-| A / X_STEP | 14 |
-| A / X_DIR | 21 |
-| B / Y_STEP | 15 |
-| B / Y_DIR | 16 |
-| MOTOR_EN, shared active LOW | 13 |
-| EM_CTRL, held OFF throughout this test | 12 |
-| USB-UART TX / RX | 43 / 44 |
-
-Maintain the hardware EN pull-up, 3.3 V driver logic, common ground, appropriate
-separate motor supply and mechanically verified driver current limit. Software
-does not alter MS1/MS2/MS3 or the A4988 current limit. SLEEP/RESET must already be
-wired for operation; this test assigns no GPIO to them. Sensor/LED pins are not
-configured. EM_CTRL is held LOW, so this tests the carriage without carrying a
-piece. Normal firmware remains responsible for electromagnet control.
-
-## Build and connect
-
-Activate the project's ESP-IDF 5.5.3 environment. From the repository root:
+Build from a new ESP-IDF 5.5.3 S3 build directory:
 
 ```sh
-idf.py -C esp32/bench/corexy_s2 set-target esp32s2
-idf.py -C esp32/bench/corexy_s2 build
+idf.py -C esp32/bench/corexy_s3 -B build-s3 set-target esp32s3
+idf.py -C esp32/bench/corexy_s3 -B build-s3 menuconfig
+idf.py -C esp32/bench/corexy_s3 -B build-s3 build
+idf.py -C esp32/bench/corexy_s3 -B build-s3 -p ACTUAL_PORT flash
+python3 pi5/app/scb_link.py --port ACTUAL_PORT
 ```
 
-With actuator power disabled during flashing, use the test S2's actual port:
-
-```sh
-idf.py -C esp32/bench/corexy_s2 -p /dev/cu.usbserial-XXXX flash
-python3 pi5/app/scb_link.py --port /dev/cu.usbserial-XXXX
-```
-
-The existing `ScbLink` terminal supplies PING every 0.5 s and sends STOP on exit
-or a timed-out GOTO/JOG request. Its opening banner mentions normal chess
-commands; use **only the bench commands below** with this firmware. A plain
-serial terminal must supply its own periodic PING. HELLO identifies
-`SCB_COREXY_S2_BENCH 1`. UART is 115200 8N1, through the onboard USB-UART bridge.
+J5 requires external board power. Native USB is the default, typically ttyACM0/cu.usbmodem; optional J6 UART1 is TX18/RX17 at 115200 8N1. Close other serial clients. HELLO is `SCB_COREXY_S3_BENCH 1`. The ScbLink console supplies heartbeat and STOP on exit. Verify hardware driver current, rails, full-step mode and clearance before enabling any motor. Hardware-test results are not established by a successful build.
 
 ## Explicit configuration, no calibration defaults
 
@@ -137,4 +100,4 @@ sh esp32/tests/run_core_tests.sh
 This compiles and exercises the shared component and the actual bench parser
 with simulated GPIO, alongside the existing firmware-core regression tests.
 Target firmware compilation requires ESP-IDF; there is no target-compiled or
-hardware-validated S2 image included in this addition.
+hardware-validated S3 image included in this addition.

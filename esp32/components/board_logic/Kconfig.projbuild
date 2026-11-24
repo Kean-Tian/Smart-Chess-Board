@@ -1,0 +1,16 @@
+menu "SCB PCB V2 wiring"
+config SCB_MOTOR_PCB_ROUTING
+    bool "Use motor STEP/DIR pad nets from the supplied PCB layout"
+    default y
+    help
+        The supplied schematic says X STEP=34 DIR=35, Y STEP=36 DIR=37.
+        Its PCB swaps STEP and DIR on both axes. The user confirmed fabrication
+        from that PCB: keep enabled. Disable only for schematic-wired hardware.
+config SCB_SENSOR_NAMED_WIRING
+    bool "Sensor cable is crossed by signal NAME rather than pin number"
+    default n
+    help
+        Default is a normal IDC16 pin-number-preserving cable (J4.n -> J1.n).
+        Master and sensor boards have different signal labels at the same pins.
+        Enable ONLY when the cable is verified to cross each signal by name.
+endmenu

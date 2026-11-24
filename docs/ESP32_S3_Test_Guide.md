@@ -1,0 +1,18 @@
+# ESP32-S3 Master PCB V2 Test Guide
+
+The current target is the custom PCB, not the retired S2 development board. Follow the [connection map](PCB_Connection_Map.md), including the straight IDC16 remap and the schematic/PCB motor STEP-DIR discrepancy. Software tests, successful compilation and dry-run validation are not hardware checkoff evidence.
+
+1. Confirm intended external board power: USB-B J5 VBUS is unconnected. Verify 3.3 V/5 V rails and common ground; do not apply 5 V to GPIO signals. Keep motor/magnet power disconnected for initial tests.
+2. Flash the matching S3 16 MB release as described in [firmware README](../esp32/README.md). Confirm the release manifest's transport and motor_routing fields. A new S3 build directory is required.
+3. Close the UI and other serial owners, then run `python pi5/app/scb_link.py --port ACTUAL_PORT` using the project Python environment. Expect native USB `/dev/ttyACM0` or a Mac `cu.usbmodem` port. A wired-UART build uses J6 TX18/RX17 at 115200 8N1 and a suitable 3.3 V adapter/Pi UART.
+4. Query PING, STATUS, INPUTS, TIMING, PLATFORM. HELLO identifies `SCB_MASTER_PCB_V2_S3 1`. No motors should be armed/moving and magnet must be off.
+5. Remove all magnets. Query RAW and SCAN. Confirm Empty, then place/remove one magnet. RAW is a polarity-normalized full frame before debounce; SCAN is the latest stable frame, not one selected row. Neither is analog voltage. POLARITY HIGH/LOW changes interpretation, not comparator sensitivity.
+6. Query SCAN to print synchronized SENSOR rows. Input characters are sensor DIG_OUT1..8 order, after the straight-cable GPIO remap. Current sensor A0/A1/A2 are GPIO6/5/4; index 0 is logical rank1. Verify HE1=a1, HE8=h1, HE57=a8, HE64=h8 on the chosen physical orientation. Test all 64 squares; never infer physical corner direction from a screenshot alone.
+7. If the empty board is wrong, use `python pi5/app/sensor_diagnostics.py --port ACTUAL_PORT --seconds 5 --output empty_board.json`. Keep the board empty. This samples digital RAW reports; it does not change GPIO, polarity, thresholds or debounce. Constant wrong levels require electrical/magnetic investigation; extra debounce cannot correct them.
+8. Check TIMING frame counters advance and measured full-frame intervals remain below 20 ms under intended load. The nominal target is 10 ms/100 Hz. SENSOR debug coalescing at 5 Hz is independent of scanning. Measure physical-to-display/LED latency separately.
+9. After verifying LED power and data connections, use LED a1 10 0 0, LED_CLEAR, GUIDE 0000000010100000, MARK e2 e4 LEGAL and MARK e2 e5 ILLEGAL. Check all 64 physical mappings and colors; ACK means queued, not optical verification. Runtime RMT statistics do not measure emitted light or LED-array current.
+10. Exit the serial console, connect the same port in the Pi UI and exercise Board / Sensor Test, starting occupancy checks, legal/illegal moves, history, disconnection and explicit fault reset/resume. Only one host program owns the serial device.
+
+Before any actuator test, confirm the actual PCB motor routing option, calibrated driver current, enable pull-up, mechanical travel and direction. No automatic motion is enabled by default; no homing switches, endstop sensors or temperature sensors are assigned by these schematics. Do not interpret software pulse completion as proof a piece reached its target.
+
+Host tests: `sh esp32/tests/run_core_tests.sh` and `python pi5/tests/pcb_mapping_tests.py`. Unified CTest covers rules, serial framing, SQLite, UI/game integration and simulated hardware. The KiCad evidence explicitly records the four motor pad-net mismatches rather than assuming schematic and PCB are identical.

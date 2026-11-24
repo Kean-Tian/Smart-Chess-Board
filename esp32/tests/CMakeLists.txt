@@ -22,7 +22,7 @@ set_target_properties(esp32_core_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CM
 add_test(NAME esp32_core_tests COMMAND esp32_core_tests)
 
 set(SCB_MOTOR_ROOT "${SCB_ESP_ROOT}/components/motor_control")
-set(SCB_MOTOR_BENCH "${SCB_ESP_ROOT}/bench/corexy_s2/main")
+set(SCB_MOTOR_BENCH "${SCB_ESP_ROOT}/bench/corexy_s3/main")
 add_executable(motor_control_tests motor_control_tests.c
     "${SCB_MOTOR_ROOT}/src/motor_control.c" "${SCB_MOTOR_BENCH}/motor_bench.c")
 target_include_directories(motor_control_tests PRIVATE "${SCB_MOTOR_ROOT}/include" "${SCB_MOTOR_BENCH}")

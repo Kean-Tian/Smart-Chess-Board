@@ -30,24 +30,28 @@ static void reply(ScbCore *c, const char *kind, unsigned id, const char *what) {
 }
 
 /* Release the magnet, disable motor drivers and clear STEP outputs. */
-static void power_off(ScbCore *c) {
-    (void)c->io.write(c->io.ctx, SCB_PIN_MAGNET, false);
-    (void)c->io.write(c->io.ctx, SCB_PIN_MOTOR_EN, true);
-    (void)c->io.write(c->io.ctx, SCB_PIN_X_STEP, false);
-    (void)c->io.write(c->io.ctx, SCB_PIN_Y_STEP, false);
+static bool power_off(ScbCore *c) {
+    bool ok = c->io.write(c->io.ctx, SCB_PIN_MAGNET, false);
+    ok = c->io.write(c->io.ctx, SCB_PIN_MOTOR_EN, true) && ok;
+    ok = c->io.write(c->io.ctx, SCB_PIN_X_STEP, false) && ok;
+    ok = c->io.write(c->io.ctx, SCB_PIN_Y_STEP, false) && ok;
     c->magnet = false;
     c->magnet_wanted = false;
+    return ok;
 }
 
 /* Stop actuators, invalidate position and report the failure. */
 void scb_core_fault(ScbCore *c, const char *reason) {
     bool interrupted = c->moving;
     unsigned id = c->move_id;
-    power_off(c);
+    if (!power_off(c)) reason = "GPIO";
+    snprintf(c->fault, sizeof(c->fault), "%s", reason);
     c->armed = c->moving = c->origin_valid = false;
     c->tracker.initialized = false;
     c->tracker.pending_count = 0;
     if (interrupted) reply(c, "ERR", id, reason);
+    if (c->snapshot_pending) reply(c, "ERR", c->snapshot_id, reason);
+    c->snapshot_pending = false;
     emit(c, "FAULT %s", reason);
 }
 
@@ -76,7 +80,7 @@ bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     c->row_ready_at = now + SCB_SCAN_SETTLE_US;
     c->frame_started_at = now;
     if (!io.show_leds(io.ctx, &c->leds)) return false;
-    emit(c, "HELLO SCB_S2_SAOLA_1 1");
+    emit(c, "HELLO SCB_MASTER_PCB_V2_S3 1");
     return true;
 }
 
@@ -166,6 +170,17 @@ static void scan_tick(ScbCore *c, int64_t now) {
                 scb_move_tracker_process(&c->tracker, c->stable, &ev);
             }
         }
+        /* A correlated snapshot must contain stable observations taken AFTER
+           its request, including when occupancy did not change after motion. */
+        if (c->snapshot_pending && !c->moving && !c->fault[0] &&
+            !c->ignore_frames &&
+            c->scan_frames - c->snapshot_after >= SCB_DEBOUNCE_SCANS + 1U &&
+            c->board_ready && c->debounce.candidate_count >= SCB_DEBOUNCE_SCANS &&
+            !memcmp(c->sampled, c->stable, sizeof(c->stable))) {
+            emit(c, "SNAPSHOT %u occupy=%016llX frame=%u fault=NONE", c->snapshot_id,
+                 (unsigned long long)occupancy_bits(c->stable), c->scan_frames);
+            c->snapshot_pending = false;
+        }
         sensor_trace(c, now, false);
     }
     if (!set_row(c, c->row)) { scb_core_fault(c, "GPIO"); return; }
@@ -186,10 +201,11 @@ static bool integer(const char *s, long lo, long hi, long *v) {
 
 /* Reject actuator commands unless armed, heartbeat-current and idle. */
 static bool require_armed(ScbCore *c, unsigned id, int64_t now) {
+    if (c->fault[0]) { reply(c, "ERR", id, "FAULT_LATCHED"); return false; }
     if (!c->armed || now - c->last_ping >= SCB_LINK_TIMEOUT_US) {
         reply(c, "ERR", id, "NOT_ARMED"); return false;
     }
-    if (c->moving) { reply(c, "ERR", id, "BUSY"); return false; }
+    if (c->moving || c->snapshot_pending) { reply(c, "ERR", id, "BUSY"); return false; }
     return true;
 }
 
@@ -227,18 +243,41 @@ static void command(ScbCore *c, char *line, int64_t now) {
     if (!strcmp(cmd, "PING") && n == 1) {
         c->last_ping = now; reply(c, "ACK", id, "PING"); return;
     }
+    if (!strcmp(cmd, "CLEAR_FAULT") && n == 1) {
+        /* This resets the latch only; it never arms or moves the mechanism. */
+        if (c->moving || c->snapshot_pending) { reply(c, "ERR", id, "BUSY"); return; }
+        if (!power_off(c)) { scb_core_fault(c, "GPIO"); reply(c, "ERR", id, "GPIO"); return; }
+        c->armed = c->origin_valid = false;
+        c->fault[0] = '\0';
+        reply(c, "ACK", id, cmd); return;
+    }
     if ((!strcmp(cmd, "STOP") || !strcmp(cmd, "DISARM")) && n == 1) {
         bool busy = c->moving; unsigned old = c->move_id;
-        power_off(c); c->armed = c->moving = c->origin_valid = false;
+        if (!power_off(c)) { scb_core_fault(c, "GPIO"); reply(c, "ERR", id, "GPIO"); return; }
+        c->armed = c->moving = c->origin_valid = false;
         c->tracker.initialized = false; c->tracker.pending_count = 0;
         if (busy) reply(c, "ERR", old, "STOPPED");
         reply(c, "ACK", id, cmd); return;
     }
+    if (!strcmp(cmd, "IDLE") && n == 1) {
+        /* End a successfully completed command without erasing calibration. */
+        if (c->moving) { reply(c, "ERR", id, "BUSY"); return; }
+        if (!power_off(c)) { scb_core_fault(c, "GPIO"); reply(c, "ERR", id, "GPIO"); return; }
+        c->armed = false;
+        reply(c, "ACK", id, cmd); return;
+    }
     if (!strcmp(cmd, "STATUS") && n == 1) {
-        emit(c, "STATUS %u armed=%u moving=%u magnet=%u origin=%u steps=%u polarity=%s", id,
+        emit(c, "STATUS %u armed=%u moving=%u magnet=%u origin=%u steps=%u polarity=%s fault=%s", id,
              c->armed, c->moving, c->magnet, c->origin_valid, c->steps_per_tile,
-             c->active_low ? "LOW" : "HIGH");
+             c->active_low ? "LOW" : "HIGH", c->fault[0] ? c->fault : "NONE");
         return;
+    }
+    if (!strcmp(cmd, "SNAPSHOT") && n == 1) {
+        if (c->fault[0]) { reply(c, "ERR", id, "FAULT_LATCHED"); return; }
+        if (c->moving || c->snapshot_pending) { reply(c, "ERR", id, "BUSY"); return; }
+        if (!c->board_ready) { reply(c, "ERR", id, "NOT_READY"); return; }
+        c->snapshot_pending = true; c->snapshot_id = id;
+        c->snapshot_after = c->scan_frames; return;
     }
     if (!strcmp(cmd, "INPUTS") && n == 1) {
         char levels[9];
@@ -271,6 +310,7 @@ static void command(ScbCore *c, char *line, int64_t now) {
         reply(c, "ACK", id, cmd); return;
     }
     if (!strcmp(cmd, "ARM") && n == 1) {
+        if (c->fault[0]) { reply(c, "ERR", id, "FAULT_LATCHED"); return; }
         if (now - c->last_ping >= SCB_LINK_TIMEOUT_US || c->last_ping == 0) {
             reply(c, "ERR", id, "PING_REQUIRED"); return;
         }
@@ -288,7 +328,7 @@ static void command(ScbCore *c, char *line, int64_t now) {
         reply(c, "ACK", id, cmd); return;
     }
     if (!strcmp(cmd, "POLARITY") && n == 2) {
-        if (c->moving) { reply(c, "ERR", id, "BUSY"); return; }
+        if (c->moving || c->snapshot_pending) { reply(c, "ERR", id, "BUSY"); return; }
         if (strcmp(args[1], "LOW") && strcmp(args[1], "HIGH")) goto bad_args;
         c->active_low = !strcmp(args[1], "LOW");
         scb_debouncer_initialize(&c->debounce, SCB_DEBOUNCE_SCANS);
@@ -321,6 +361,19 @@ static void command(ScbCore *c, char *line, int64_t now) {
     }
     if (!strcmp(cmd, "LED_CLEAR") && n == 1) {
         scb_led_clear(&c->leds);
+        if (!c->io.show_leds(c->io.ctx, &c->leds)) { reply(c, "ERR", id, "LED"); return; }
+        reply(c, "ACK", id, cmd); return;
+    }
+    if (!strcmp(cmd, "GUIDE") && n == 2) {
+        if (strlen(args[1]) != 16) goto bad_args;
+        for (unsigned i = 0; i < 16; ++i)
+            if (!strchr("0123456789abcdefABCDEF", args[1][i])) goto bad_args;
+        char *end; errno = 0;
+        unsigned long long mask = strtoull(args[1], &end, 16);
+        if (errno || *end) goto bad_args;
+        scb_led_clear(&c->leds);
+        for (unsigned i = 0; i < 64; ++i)
+            if (mask & (1ULL << i)) scb_led_set_square(&c->leds, i, (ScbRgb){0, 20, 0});
         if (!c->io.show_leds(c->io.ctx, &c->leds)) { reply(c, "ERR", id, "LED"); return; }
         reply(c, "ACK", id, cmd); return;
     }
@@ -404,7 +457,8 @@ static void motion_tick(ScbCore *c, int64_t now) {
     }
     if (now < c->next_step_at) return;
     if (c->x == c->target_x && c->y == c->target_y) {
-        power_off(c); c->moving = false;
+        if (!power_off(c)) { scb_core_fault(c, "GPIO"); return; }
+        c->moving = false;
         c->ignore_frames = SCB_DEBOUNCE_SCANS + 1;
         scb_move_tracker_initialize(&c->tracker);
         /* Re-establish tracker baseline even if occupancy has not changed. */

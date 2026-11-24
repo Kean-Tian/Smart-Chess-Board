@@ -4,12 +4,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#if !CONFIG_IDF_TARGET_ESP32S2
-#error "This bench firmware is for ESP32-S2-Saola-1 only."
+#if !CONFIG_IDF_TARGET_ESP32S3
+#error "This bench firmware is for SCB Master PCB V2 ESP32-S3 only."
 #endif
 
-/* Fixed MUX address 000 after application startup on GPIO36/37/38. No scanning
- * or SCB UART tasks run. Saola's onboard USB-UART uses GPIO43/44.
+/* Fixed MUX address 000 after application startup on GPIO6/5/4. No scanning
+ * or SCB UART tasks run. The PCB native USB uses GPIO19/20.
  * ROM boot/reset pin states are not controlled by this application.
  */
 void app_main(void)

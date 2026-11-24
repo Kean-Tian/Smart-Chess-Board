@@ -31,6 +31,15 @@
         "disabled": false
       },
       {
+        "id": "diagnostics",
+        "target": "diagnostics",
+        "x": 368,
+        "y": 544,
+        "w": 320,
+        "h": 244,
+        "disabled": false
+      },
+      {
         "id": "continue-game",
         "target": "game",
         "x": 32,
@@ -242,6 +251,124 @@
         "y": 1140,
         "w": 320,
         "h": 88,
+        "disabled": false
+      }
+    ],
+    "diagnostics": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "sensor-game",
+        "target": "game",
+        "x": 480,
+        "y": 1132,
+        "w": 208,
+        "h": 80,
+        "disabled": false
+      }
+    ],
+    "instructions": [
+      {
+        "id": "back",
+        "target": "game",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      }
+    ],
+    "coaching": [
+      {
+        "id": "back",
+        "target": "game",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      }
+    ],
+    "setup-computer": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "choose-white",
+        "target": "profiles",
+        "x": 32,
+        "y": 504,
+        "w": 320,
+        "h": 144,
+        "disabled": false
+      },
+      {
+        "id": "choose-black",
+        "target": "profiles",
+        "x": 368,
+        "y": 504,
+        "w": 320,
+        "h": 144,
+        "disabled": true
+      },
+      {
+        "id": "prepare",
+        "target": "board-setup",
+        "x": 32,
+        "y": 1128,
+        "w": 656,
+        "h": 96,
+        "disabled": false
+      }
+    ],
+    "setup-coach": [
+      {
+        "id": "back",
+        "target": "home",
+        "x": 32,
+        "y": 88,
+        "w": 80,
+        "h": 80,
+        "disabled": false
+      },
+      {
+        "id": "choose-white",
+        "target": "profiles",
+        "x": 32,
+        "y": 504,
+        "w": 320,
+        "h": 144,
+        "disabled": false
+      },
+      {
+        "id": "choose-black",
+        "target": "profiles",
+        "x": 368,
+        "y": 504,
+        "w": 320,
+        "h": 144,
+        "disabled": false
+      },
+      {
+        "id": "prepare",
+        "target": "board-setup",
+        "x": 32,
+        "y": 1128,
+        "w": 656,
+        "h": 96,
         "disabled": false
       }
     ]

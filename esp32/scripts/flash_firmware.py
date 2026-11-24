@@ -1,4 +1,4 @@
-"""Validate and flash the ESP32-S2-Saola-1 images; never force chip mismatch."""
+"""Validate and flash the SCB Master PCB V2 ESP32-S3 images; never force chip mismatch."""
 import argparse
 import hashlib
 import json
@@ -9,18 +9,18 @@ import subprocess
 import sys
 
 RELEASE = Path(__file__).resolve().parents[1] / 'release'
-ESP32S2_IMAGE_CHIP_ID = 2
-FLASH_BYTES = 4 * 1024 * 1024
+ESP32S3_IMAGE_CHIP_ID = 9
+FLASH_BYTES = 16 * 1024 * 1024
 
 
 def validate_release(directory):
     directory = Path(directory).resolve()
     manifest = json.loads((directory / 'flash_manifest.json').read_text())
     if (manifest.get('chip'), manifest.get('flash_size'), manifest.get('flash_mode'),
-            manifest.get('flash_freq')) != ('esp32s2', '4MB', 'dio', '40m'):
-        raise ValueError('Expected the ESP32-S2-Saola-1 / 4 MB DIO 40 MHz release')
+            manifest.get('flash_freq')) != ('esp32s3', '16MB', 'dio', '40m'):
+        raise ValueError('Expected the SCB Master PCB V2 ESP32-S3 / 16 MB DIO 40 MHz release')
     images = manifest.get('images', [])
-    expected = {'bootloader.bin': 0x1000, 'partitions.bin': 0x8000, 'firmware.bin': 0x10000}
+    expected = {'bootloader.bin': 0x0, 'partitions.bin': 0x8000, 'firmware.bin': 0x10000}
     if len(images) != len(expected) or {item['file'] for item in images} != set(expected):
         raise ValueError('Unexpected image set')
     previous_end = 0
@@ -34,8 +34,8 @@ def validate_release(directory):
         if len(data) != item['bytes'] or hashlib.sha256(data).hexdigest() != item['sha256']:
             raise ValueError(f'Release checksum mismatch: {name}')
         if name != 'partitions.bin':
-            if len(data) < 24 or data[0] != 0xE9 or struct.unpack_from('<H', data, 12)[0] != ESP32S2_IMAGE_CHIP_ID:
-                raise ValueError(f'Image is not an ESP32-S2 executable: {name}')
+            if len(data) < 24 or data[0] != 0xE9 or struct.unpack_from('<H', data, 12)[0] != ESP32S3_IMAGE_CHIP_ID:
+                raise ValueError(f'Image is not an ESP32-S3 executable: {name}')
         previous_end = offset + len(data)
         files.extend([hex(offset), str(path)])
     return files
@@ -44,19 +44,21 @@ def validate_release(directory):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', required=True, help='Actual USB serial port')
+    parser.add_argument('--release-dir', type=Path, default=RELEASE,
+                        help='Release directory; verify its motor_routing and transport before flashing')
     parser.add_argument('--baud', type=int, default=115200, help='Flash baud rate (default: 115200)')
     parser.add_argument('--no-compress', action='store_true',
                         help='Use uncompressed writes; combine with --baud 57600 for an unstable link')
     parser.add_argument('--dry-run', action='store_true', help='Validate and print command only')
     args = parser.parse_args(argv)
-    files = validate_release(RELEASE)
+    files = validate_release(args.release_dir)
     if args.baud <= 0:
         parser.error('--baud must be positive')
-    command = [sys.executable, '-m', 'esptool', '--chip', 'esp32s2', '--port', args.port,
+    command = [sys.executable, '-m', 'esptool', '--chip', 'esp32s3', '--port', args.port,
                '--baud', str(args.baud), 'write_flash',
                *(['--no-compress'] if args.no_compress else []),
                '--flash_mode', 'dio', '--flash_freq', '40m',
-               '--flash_size', '4MB', *files]
+               '--flash_size', '16MB', *files]
     print(shlex.join(command), flush=True)
     if args.dry_run:
         print('Validated release; no serial port opened and nothing flashed.')

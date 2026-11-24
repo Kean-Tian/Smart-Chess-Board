@@ -86,20 +86,20 @@ class FirmwareReleaseTests(unittest.TestCase):
         spec.loader.exec_module(cls.flash)
         cls.release = ROOT / "esp32/release"
 
-    def test_release_is_esp32s2_and_dry_run_never_opens_serial(self):
+    def test_release_is_esp32s3_and_dry_run_never_opens_serial(self):
         files = self.flash.validate_release(self.release)
-        self.assertEqual(files[::2], ["0x1000", "0x8000", "0x10000"])
+        self.assertEqual(files[::2], ["0x0", "0x8000", "0x10000"])
         with patch.object(self.flash, "RELEASE", self.release), \
                 patch.object(self.flash.subprocess, "call") as execute, \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(self.flash.main(["--port", "not-a-real-port", "--dry-run"]), 0)
         execute.assert_not_called()
-        self.assertIn("--chip esp32s2 ", output.getvalue())
+        self.assertIn("--chip esp32s3 ", output.getvalue())
         self.assertIn("--baud 115200 ", output.getvalue())
         self.assertNotIn("--no-stub", output.getvalue())
 
     def test_corrupt_or_other_chip_image_is_rejected(self):
-        for other_chip in [None, 0, 9]:
+        for other_chip in [None, 0, 2]:
             with self.subTest(other_chip=other_chip), tempfile.TemporaryDirectory() as directory:
                 temp = Path(directory)
                 for name in ["flash_manifest.json", "bootloader.bin", "partitions.bin", "firmware.bin"]:
@@ -107,7 +107,7 @@ class FirmwareReleaseTests(unittest.TestCase):
                 path = temp / "firmware.bin"
                 data = bytearray(path.read_bytes())
                 if other_chip is not None:
-                    # Reject old classic ESP32 and ESP32-S3 images even with valid hashes.
+                    # Reject old classic ESP32 and ESP32-S2 images even with valid hashes.
                     struct.pack_into("<H", data, 12, other_chip)
                     manifest = json.loads((temp / "flash_manifest.json").read_text())
                     next(item for item in manifest["images"] if item["file"] == "firmware.bin")["sha256"] = hashlib.sha256(data).hexdigest()
@@ -115,7 +115,7 @@ class FirmwareReleaseTests(unittest.TestCase):
                 else:
                     data[-1] ^= 1
                 path.write_bytes(data)
-                with self.assertRaisesRegex(ValueError, "not an ESP32-S2" if other_chip is not None else "checksum mismatch"):
+                with self.assertRaisesRegex(ValueError, "not an ESP32-S3" if other_chip is not None else "checksum mismatch"):
                     self.flash.validate_release(temp)
 
     def test_uncompressed_low_baud_flash_is_explicit_and_dry_run_only(self):
@@ -125,7 +125,7 @@ class FirmwareReleaseTests(unittest.TestCase):
             self.assertEqual(self.flash.main(['--port', 'not-a-real-port', '--baud', '57600',
                                               '--no-compress', '--dry-run']), 0)
         execute.assert_not_called()
-        self.assertIn('--chip esp32s2 ', output.getvalue())
+        self.assertIn('--chip esp32s3 ', output.getvalue())
         self.assertIn('--baud 57600 write_flash --no-compress ', output.getvalue())
 
     def test_previous_chip_bootloader_address_is_rejected(self):

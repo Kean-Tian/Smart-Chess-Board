@@ -1,0 +1,13 @@
+#ifndef SCB_COREXY_BENCH_PINS_H
+#define SCB_COREXY_BENCH_PINS_H
+#include "board_pins.h"
+/* Same physical outputs as the main SCBMasterPCBV2 firmware. */
+#define SCB_BENCH_A_STEP SCB_PIN_X_STEP
+#define SCB_BENCH_A_DIR SCB_PIN_X_DIR
+#define SCB_BENCH_B_STEP SCB_PIN_Y_STEP
+#define SCB_BENCH_B_DIR SCB_PIN_Y_DIR
+#define SCB_BENCH_ENABLE SCB_PIN_MOTOR_EN
+#define SCB_BENCH_EM_CTRL SCB_PIN_MAGNET
+#define SCB_BENCH_UART_TX SCB_PIN_UART_TX
+#define SCB_BENCH_UART_RX SCB_PIN_UART_RX
+#endif

@@ -1,6 +1,6 @@
 #include "board_pins.h"
 #include "driver/gpio.h"
-#include "driver/uart.h"
+#include "scb_transport.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -10,15 +10,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !CONFIG_IDF_TARGET_ESP32S2
-#error "This test is for ESP32-S2-Saola-1 only."
+#if !CONFIG_IDF_TARGET_ESP32S3
+#error "This test is for SCB Master PCB V2 ESP32-S3 only."
 #endif
 _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_ROW_A0), "A0 must support output");
 _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_ROW_A1), "A1 must support output");
 _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_ROW_A2), "A2 must support output");
 
 /* Standalone fixed-address test using the shared board_pins.h map:
- * A0 HIGH, A1/A2 LOW (GPIO36/37/38 = 100, decoder address 001).
+ * Sensor A0 HIGH, A1/A2 LOW (default GPIO6/5/4 = 100).
  * No board scanning runs. Flash the main release to restore scanning.
  * ROM/reset states are outside the control of app_main.
  */
@@ -27,7 +27,7 @@ static void reply(const char *kind, unsigned id, const char *payload)
     char output[192];
     int length = snprintf(output, sizeof(output), "%s %u %s\n", kind, id, payload);
     if (length > 0 && (size_t)length < sizeof(output))
-        (void)uart_write_bytes(UART_NUM_0, output, length);
+        (void)scb_transport_write(output, length, pdMS_TO_TICKS(20));
 }
 
 static void handle_command(char *line)
@@ -83,26 +83,16 @@ static void handle_command(char *line)
 
 static void uart_console(void)
 {
-    const uart_config_t config = {
-        .baud_rate = SCB_UART_BAUD,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT,
-    };
-    ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &config));
-    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, SCB_PIN_UART_TX, SCB_PIN_UART_RX,
-                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 512, 0, 0, NULL, 0));
-    const char hello[] = "HELLO SCB_S2_A0_HIGH 1\n";
-    (void)uart_write_bytes(UART_NUM_0, hello, sizeof(hello) - 1);
+    ESP_ERROR_CHECK(scb_transport_init());
+    const char hello[] = "HELLO SCB_S3_A0_HIGH 1\n";
+    (void)scb_transport_write(hello, sizeof(hello) - 1, pdMS_TO_TICKS(20));
     char line[128];
     size_t used = 0;
     bool discard = false;
     for (;;) {
         unsigned char buffer[64];
-        int count = uart_read_bytes(UART_NUM_0, buffer, sizeof(buffer), pdMS_TO_TICKS(20));
+        int count = scb_transport_read(buffer, sizeof(buffer));
+        if (count <= 0) vTaskDelay(pdMS_TO_TICKS(1));
         for (int i = 0; i < count; ++i) {
             unsigned char ch = buffer[i];
             if (ch == '\n') {

@@ -11,6 +11,9 @@ typedef struct {
     char name[SCB_PLAYER_NAME_MAX + 1];
 } ScbPlayer;
 typedef struct {
+    int completed, wins, losses, draws;
+} ScbPlayerStats;
+typedef struct {
     struct sqlite3 *db;
     char path[4096];
     char error[192];
@@ -26,4 +29,5 @@ bool player_store_select(PlayerStore *store, int64_t id);
 bool player_store_create(PlayerStore *store, const char *name);
 bool player_store_rename(PlayerStore *store, int64_t id, const char *name);
 bool player_store_delete(PlayerStore *store, int64_t id);
+bool player_store_stats(PlayerStore *store, int64_t id, ScbPlayerStats *stats);
 #endif

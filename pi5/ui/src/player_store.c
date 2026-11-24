@@ -103,6 +103,26 @@ void player_store_close(PlayerStore *s) {
     if(s->db) sqlite3_close(s->db);
     s->db = NULL;
 }
+bool player_store_stats(PlayerStore *s, int64_t id, ScbPlayerStats *stats) {
+    /* 统计真实结束的对局；进行中和中断的对局不计入。 */
+    memset(stats, 0, sizeof(*stats));
+    sqlite3_stmt *stmt = NULL;
+    if(!prepare(s, &stmt, "SELECT count(*),"
+        "coalesce(sum((white_player_id=?1 AND result='1-0') OR (black_player_id=?1 AND result='0-1')),0),"
+        "coalesce(sum((white_player_id=?1 AND result='0-1') OR (black_player_id=?1 AND result='1-0')),0),"
+        "coalesce(sum(result='1/2-1/2'),0) FROM games "
+        "WHERE status='completed' AND (white_player_id=?1 OR black_player_id=?1)")) return false;
+    sqlite3_bind_int64(stmt, 1, id);
+    int rc = sqlite3_step(stmt);
+    if(rc == SQLITE_ROW) {
+        stats->completed = sqlite3_column_int(stmt, 0);
+        stats->wins = sqlite3_column_int(stmt, 1);
+        stats->losses = sqlite3_column_int(stmt, 2);
+        stats->draws = sqlite3_column_int(stmt, 3);
+    } else db_error(s);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_ROW;
+}
 bool player_store_page(PlayerStore *s, int offset, ScbPlayer *rows, int *count, int *total) {
     /* 先查询总人数，再按名字取一页；offset 是跳过的记录数。 */
     *count = *total = 0;
