@@ -15,13 +15,13 @@
 #include <string.h>
 
 #if !CONFIG_IDF_TARGET_ESP32S3
-#error "This firmware targets SCB Master PCB V2 bare ESP32-S3."
+#error "This firmware targets SCB Master PCB V3 bare ESP32-S3."
 #endif
 _Static_assert(SOC_CPU_CORES_NUM == 2, "ESP32-S3 has two CPU cores");
 #if CONFIG_FREERTOS_UNICORE || CONFIG_SPIRAM
-#error "PCB V2 requires the configured dual-core S3 without PSRAM (GPIO33..38 are actuators)."
+#error "PCB V3 requires the configured dual-core S3 without PSRAM (GPIO33..38 are actuators)."
 #endif
-_Static_assert(SCB_PIN_UART_TX == 18 && SCB_PIN_UART_RX == 17, "J6 UART pins from schematic");
+_Static_assert(SCB_PIN_UART_TX == 17 && SCB_PIN_UART_RX == 18, "J6 UART pins from schematic");
 #define SCB_CHECK_OUTPUT(pin) \
     _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S3 output GPIO: " #pin); \
     _Static_assert((pin) != 19 && (pin) != 20 && !((pin) >= 26 && (pin) <= 32), \
@@ -187,6 +187,20 @@ static void configure_gpio(void) {
      * HIGH is a measured input, not a request for this MCU to drive HIGH.
      */
     ESP_ERROR_CHECK(gpio_config(&in_config));
+
+    /* PCB probe test: GPIO46 (QFN pad 52, D6 anode in V3) stays HIGH after app startup.
+     * Its reset/boot strapping level is not controlled by this code.
+     */
+    _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_PCB_TEST), "GPIO46 must support output on this chip");
+    const gpio_config_t probe_config = {
+        .pin_bit_mask = UINT64_C(1) << SCB_PIN_PCB_TEST,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)SCB_PIN_PCB_TEST, 1));
+    ESP_ERROR_CHECK(gpio_config(&probe_config));
 }
 /* Every 1 ms, advance the core and pass incoming UART bytes to its parser. */
 static void control_task(void *unused) {

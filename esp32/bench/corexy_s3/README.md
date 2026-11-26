@@ -1,8 +1,8 @@
-# SCB Master PCB V2 CoreXY Bench — ESP32-S3
+# SCB Master PCB V3 CoreXY Bench — ESP32-S3
 
 Standalone S3 test firmware using the same GPIO header and native USB/J6 UART transport as the main firmware. Flashing it replaces the chess application. It does not run chess sensing/UI/LED feedback and keeps EM_CTRL LOW. Restore the normal release after the bench test.
 
-The supplied schematic and PCB swap STEP/DIR on both motor drivers. Select the appropriate `SCB_MOTOR_PCB_ROUTING` option, as explained in the [connection map](../../../docs/PCB_Connection_Map.md). No calibration or direction is inferred from electrical signal names.
+The V3 schematic and PCB agree: X STEP=35/DIR=34 and Y STEP=37/DIR=36. The obsolete V2 motor-routing option has been removed. GPIO46 drives D6 HIGH after application startup for the requested PCB test; reset/boot strapping levels are not controlled by the application. Physical actuator accuracy remains unverified.
 
 Build from a new ESP-IDF 5.5.3 S3 build directory:
 
@@ -14,7 +14,7 @@ idf.py -C esp32/bench/corexy_s3 -B build-s3 -p ACTUAL_PORT flash
 python3 pi5/app/scb_link.py --port ACTUAL_PORT
 ```
 
-J5 requires external board power. Native USB is the default, typically ttyACM0/cu.usbmodem; optional J6 UART1 is TX18/RX17 at 115200 8N1. Close other serial clients. HELLO is `SCB_COREXY_S3_BENCH 1`. The ScbLink console supplies heartbeat and STOP on exit. Verify hardware driver current, rails, full-step mode and clearance before enabling any motor. Hardware-test results are not established by a successful build.
+J5 requires external board power. Native USB is the default, typically ttyACM0/cu.usbmodem; optional J6 UART1 is TX17/RX18 at 115200 8N1. Close other serial clients. HELLO is `SCB_COREXY_S3_BENCH 1`. The ScbLink console supplies heartbeat and STOP on exit. Verify hardware driver current, rails, full-step mode and clearance before enabling any motor. Hardware-test results are not established by a successful build.
 
 ## Explicit configuration, no calibration defaults
 

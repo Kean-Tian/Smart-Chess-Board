@@ -1,0 +1,93 @@
+{
+  "date": "2026-11-23",
+  "mcu_board": "SCB Master PCB V2",
+  "mcu_chip": "esp32s3",
+  "mcu_module": "Bare ESP32-S3 + W25Q128JVS external 16 MB Flash; no PSRAM",
+  "transport": "Native USB Serial/JTAG, J5 GPIO19 D- / GPIO20 D+; VBUS unconnected",
+  "alternative_transport": "J6 UART1: GPIO18 TX, GPIO17 RX, 115200 8N1; not ROM UART0",
+  "cpu": "dual-core 240 MHz; control task pinned to core 1",
+  "gpio": {
+    "mux_A0_A1_A2": [
+      6,
+      5,
+      4
+    ],
+    "sensor_DIG_OUT1_to_8": [
+      13,
+      14,
+      10,
+      9,
+      11,
+      12,
+      8,
+      7
+    ],
+    "external_rgb": 2,
+    "magnet": 33,
+    "X_STEP_DIR": [
+      35,
+      34
+    ],
+    "Y_STEP_DIR": [
+      37,
+      36
+    ],
+    "motor_enable": 38,
+    "occupied_level": "HIGH initial default; physical polarity must be verified"
+  },
+  "cable": "Straight IDC16 pin n to pin n; firmware remaps different master/sensor labels",
+  "motor_routing": "User confirmed fabrication from supplied PCB; default PCB routing enabled. Schematic disagrees on four motor pad nets.",
+  "schematic_and_pcb_evidence": "../../hardware/pcb_v2/connections.json",
+  "host_ctest": {
+    "passed": 15,
+    "total": 15,
+    "platform": "macOS arm64; simulated GPIO and serial, no hardware"
+  },
+  "native_ui_ctest": {
+    "passed": 4,
+    "total": 4,
+    "platform": "macOS; UI interactions, pointer input, SQLite and local service"
+  },
+  "portable_core_sanitizer": "passed: simulated GPIO, sensing, framing, outputs, motion and watchdogs; CoreXY tests passed",
+  "esp32_target_build": {
+    "passed": true,
+    "idf_version": "5.5.3",
+    "chip": "esp32s3",
+    "static_internal_ram_bytes": 88240,
+    "firmware_sha256": "0f289afeac21d41aa1cdf33e7745e96f2a099fe2aa04cafba4a15de36edf77ee",
+    "motor_routing": "pcb_layout",
+    "flash_dry_run": "passed; no serial port opened",
+    "flashed_in_this_update": false,
+    "hardware_tested": false
+  },
+  "software_targets": {
+    "nominal_full_board_hz": 100,
+    "row_settle_us": 1000,
+    "matching_debounce_frames": 2,
+    "automatic_sensor_debug_snapshots_per_second_max": 5
+  },
+  "hardware_requirements_pending": [
+    "Empty-board accuracy and magnet polarity on custom PCB",
+    "All 64 sensor positions and assembled physical orientation",
+    "Sustained scan/debounce measurements",
+    "Physical LED wiring, colors, timing and supply current",
+    "Motor direction, driver current, carriage calibration and piece transport",
+    "External power and thermal behavior"
+  ],
+  "previous_validation": "history/Pre_PCB_V2_20261123.json",
+  "additional_s3_target_builds": {
+    "wired_uart1": "passed",
+    "pcb_motor_routing": "passed",
+    "bench_corexy_s3": "passed",
+    "bench_mux_low": "passed",
+    "bench_a0_high": "passed",
+    "physical_hardware_used": false
+  },
+  "mac_entry_real_engine": {
+    "passed": true,
+    "suites": 10,
+    "real_stockfish_plies": 12,
+    "network_used": false,
+    "physical_hardware_used": false
+  }
+}

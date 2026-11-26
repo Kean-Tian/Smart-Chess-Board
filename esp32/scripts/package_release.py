@@ -1,4 +1,4 @@
-"""Export an ESP-IDF SCB Master PCB V2 ESP32-S3 build with verified flash metadata."""
+"""Export an ESP-IDF SCB Master PCB V3 ESP32-S3 build with verified flash metadata."""
 import argparse
 import datetime
 import hashlib
@@ -28,8 +28,10 @@ def main():
     description = json.loads((build / 'project_description.json').read_text())
     flash = json.loads((build / 'flasher_args.json').read_text())
     settings = flash['flash_settings']
+    if description['project_name'] != 'scb_master_pcb_v3':
+        raise SystemExit('Only the full PCB V3 application may replace esp32/release')
     if description['target'] != 'esp32s3' or settings['flash_size'] != '16MB':
-        raise SystemExit('Expected an SCB Master PCB V2 ESP32-S3 / 16 MB build; refusing to package')
+        raise SystemExit('Expected an SCB Master PCB V3 ESP32-S3 / 16 MB build; refusing to package')
     elf = build / description['app_elf']
     source_files = [ROOT / 'CMakeLists.txt', ROOT / 'sdkconfig.defaults', ROOT / 'partitions.csv']
     source_files += sorted((ROOT / 'main').glob('*.[ch]'))
@@ -62,7 +64,7 @@ def main():
     version_text = (Path(description['idf_path']) / 'tools/cmake/version.cmake').read_text()
     version_parts = dict(re.findall(r'set\(IDF_VERSION_(MAJOR|MINOR|PATCH) (\d+)\)', version_text))
     idf_version = '.'.join(version_parts[part] for part in ['MAJOR', 'MINOR', 'PATCH'])
-    manifest = dict(chip='esp32s3', board='SCB Master PCB V2 ESP32-S3',
+    manifest = dict(chip='esp32s3', board='SCB Master PCB V3 ESP32-S3',
                     module='Bare ESP32-S3 + W25Q128JVS 16 MB; no PSRAM', idf_version=idf_version,
                     use_stub=flash['extra_esptool_args']['stub'],
                     flash_mode=settings['flash_mode'], flash_freq=settings['flash_freq'],
@@ -70,13 +72,15 @@ def main():
                     build_date=str(datetime.date.today()), static_internal_ram_bytes=used,
                     static_ram_limit_bytes=264 * 1024,
                     transport='uart' if '#define CONFIG_SCB_LINK_UART 1' in (build / 'config/sdkconfig.h').read_text() else 'native_usb_serial_jtag',
-                    motor_routing='pcb_layout' if '#define CONFIG_SCB_MOTOR_PCB_ROUTING 1' in (build / 'config/sdkconfig.h').read_text() else 'schematic',
+                    motor_routing='v3_schematic_and_pcb_agree',
+                    sensor_board='SCBSensorPCBV2.2',
+                    pcb_test=dict(gpio=46, level='HIGH after application startup', component='D6'),
                     sensor_cable='signal-name crossover' if '#define CONFIG_SCB_SENSOR_NAMED_WIRING 1' in (build / 'config/sdkconfig.h').read_text() else 'IDC16 pin n to pin n',
                     source_sha256={str(p.relative_to(ROOT)): digest(p) for p in source_files})
     (out / 'flash_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     from flash_firmware import validate_release
     validate_release(out)
-    print(f'Packaged SCB Master PCB V2 ESP32-S3 release: {len(images)} images, static internal RAM {used} bytes')
+    print(f'Packaged SCB Master PCB V3 ESP32-S3 release: {len(images)} images, static internal RAM {used} bytes')
     return 0
 
 

@@ -13,7 +13,7 @@ the existing line protocol, motion watchdogs and electromagnet. Sensor/LED logic
 lives in `components/board_logic`. Its existing motor routine is a bench-level,
 independent X-then-Y pulse generator, not CoreXY kinematics.
 
-The firmware now targets the custom SCB Master PCB V2 ESP32-S3. GPIO maps follow the supplied schematic, with an explicit alternative for the supplied PCB STEP/DIR pad-net discrepancy; see [connection map](../../../docs/PCB_Connection_Map.md). The main chess core retains its existing guarded X-then-Y pulse routine. This board-independent CoreXY module is exercised by the separate S3 bench; production CoreXY routing, belt mapping, mechanical scale and collision handling are not inferred from the electrical schematic.
+The firmware now targets the custom SCB Master PCB V3 ESP32-S3. GPIO maps now agree between the V3 schematic and PCB: X_STEP=35, X_DIR=34, Y_STEP=37, Y_DIR=36; see [connection map](../../../docs/PCB_Connection_Map.md). The main chess core retains its existing guarded X-then-Y pulse routine. This board-independent CoreXY module is exercised by the separate S3 bench; production CoreXY routing, belt mapping, mechanical scale and collision handling are not inferred from the electrical schematic.
 
 ## Calibration and coordinate convention
 

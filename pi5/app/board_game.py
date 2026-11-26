@@ -302,7 +302,7 @@ def run(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Pi rules console with SCB Master PCB V2 ESP32-S3 sensor input")
+    parser = argparse.ArgumentParser(description="Pi rules console with SCB Master PCB V3 ESP32-S3 sensor input")
     parser.add_argument("--port", default="/dev/ttyACM0")
     parser.add_argument("--mode", choices=["pvp", "pvc"], default="pvp")
     add_opponent_arguments(parser)

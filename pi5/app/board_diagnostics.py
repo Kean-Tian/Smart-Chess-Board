@@ -19,7 +19,7 @@ def assess(timing, platform, elapsed_s, frame_delta, require_led=True):
     led_pass = (0 < platform['max_us'] < 100000 and
                 platform['late'] == 0 and platform['failed'] == 0) if require_led else None
     return {
-        'mcu_target': 'SCB Master PCB V2 ESP32-S3',
+        'mcu_target': 'SCB Master PCB V3 ESP32-S3',
         "observed_full_board_hz": observed_hz,
         'scan_pass': scan_pass,
         'led_exercise_requested': require_led,

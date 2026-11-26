@@ -1,0 +1,1179 @@
+{
+  "source_hashes": {
+    "SCBMasterPCBV3.kicad_sch": "d135f15b1523bfda1006b8015e9510e7f897550db7677b0dded68509f1445483",
+    "SCBMasterPCBV3.kicad_pcb": "b4d1866bd2bbe5998898f1927cba1437069764b298a45c8e21d72627a09ee7d2",
+    "SCBSensorPCBV2.2.kicad_sch": "53e44465a30ed86888c3b87ea1dde52c6d32e324b90d70eba98f0ed865f4a28a",
+    "SCBSensorPCBV2.2.kicad_pcb": "3da0bc55c7ed6401f105e19a73e273ca547941ad1051f7f1cbe83116f8fab0eb"
+  },
+  "master_gpio_by_net": {
+    "/GPIO0": 0,
+    "/GPIO1": 1,
+    "/GPIO2": 2,
+    "/GPIO46": 46,
+    "/UART_RX": 18,
+    "/UART_TX": 17,
+    "/USB_DN": 19,
+    "/USB_DP": 20,
+    "DIG_OUT1": 13,
+    "DIG_OUT2": 14,
+    "DIG_OUT3": 4,
+    "DIG_OUT4": 5,
+    "DIG_OUT5": 11,
+    "DIG_OUT6": 12,
+    "DIG_OUT7": 6,
+    "DIG_OUT8": 7,
+    "EM_CTRL": 33,
+    "LED_IN_3V3": 21,
+    "MOTOR_EN": 38,
+    "MUX_IN1": 8,
+    "MUX_IN2": 9,
+    "MUX_IN3": 10,
+    "X_DIR": 34,
+    "X_STEP": 35,
+    "Y_DIR": 36,
+    "Y_STEP": 37,
+    "unconnected-(U1-GPIO3-Pad8)": 3,
+    "unconnected-(U1-GPIO45-Pad51)": 45
+  },
+  "master_J4": {
+    "14": "+3V3",
+    "16": "+5V",
+    "3": "DIG_OUT1",
+    "1": "DIG_OUT2",
+    "2": "DIG_OUT3",
+    "4": "DIG_OUT4",
+    "7": "DIG_OUT5",
+    "5": "DIG_OUT6",
+    "6": "DIG_OUT7",
+    "8": "DIG_OUT8",
+    "10": "GND",
+    "12": "GND",
+    "9": "LED_IN",
+    "15": "MUX_IN1",
+    "13": "MUX_IN2",
+    "11": "MUX_IN3"
+  },
+  "sensor_J1": {
+    "14": "+3V3",
+    "16": "+5V",
+    "3": "DIG_OUT1",
+    "1": "DIG_OUT2",
+    "2": "DIG_OUT3",
+    "4": "DIG_OUT4",
+    "7": "DIG_OUT5",
+    "5": "DIG_OUT6",
+    "6": "DIG_OUT7",
+    "8": "DIG_OUT8",
+    "10": "GND",
+    "12": "GND",
+    "9": "LED_IN",
+    "11": "MUX_IN1",
+    "13": "MUX_IN2",
+    "15": "MUX_IN3"
+  },
+  "master_J5": {
+    "3": "/D+",
+    "2": "/D-",
+    "4": "GND",
+    "SH": "GND",
+    "1": "Net-(J5-VBUS)"
+  },
+  "master_J6": {
+    "2": "/UART_RX",
+    "1": "/UART_TX",
+    "3": "GND"
+  },
+  "led_chain": [
+    "DL1",
+    "DL2",
+    "DL3",
+    "DL4",
+    "DL5",
+    "DL6",
+    "DL7",
+    "DL8",
+    "DL16",
+    "DL15",
+    "DL14",
+    "DL13",
+    "DL12",
+    "DL11",
+    "DL10",
+    "DL9",
+    "DL17",
+    "DL18",
+    "DL19",
+    "DL20",
+    "DL21",
+    "DL22",
+    "DL23",
+    "DL24",
+    "DL32",
+    "DL31",
+    "DL30",
+    "DL29",
+    "DL28",
+    "DL27",
+    "DL26",
+    "DL25",
+    "DL33",
+    "DL34",
+    "DL35",
+    "DL36",
+    "DL37",
+    "DL38",
+    "DL39",
+    "DL40",
+    "DL48",
+    "DL47",
+    "DL46",
+    "DL45",
+    "DL44",
+    "DL43",
+    "DL42",
+    "DL41",
+    "DL49",
+    "DL50",
+    "DL51",
+    "DL52",
+    "DL53",
+    "DL54",
+    "DL55",
+    "DL56",
+    "DL64",
+    "DL63",
+    "DL62",
+    "DL61",
+    "DL60",
+    "DL59",
+    "DL58",
+    "DL57"
+  ],
+  "pcb_positions": {
+    "SCBMasterPCBV3": {
+      "U1": [
+        "140.57",
+        "94.495"
+      ],
+      "J4": [
+        "173.9",
+        "105.71",
+        "-90"
+      ],
+      "J5": [
+        "142.95",
+        "105.4725",
+        "-90"
+      ],
+      "J6": [
+        "125.6",
+        "108.95",
+        "90"
+      ]
+    },
+    "SCBSensorPCBV2.2": {
+      "HE1": [
+        "107.08",
+        "109.17"
+      ],
+      "HE2": [
+        "122.08",
+        "109.17"
+      ],
+      "HE3": [
+        "137.08",
+        "109.17"
+      ],
+      "HE4": [
+        "152.08",
+        "109.17"
+      ],
+      "HE5": [
+        "167.08",
+        "109.17"
+      ],
+      "HE6": [
+        "182.08",
+        "109.17"
+      ],
+      "HE7": [
+        "197.08",
+        "109.17"
+      ],
+      "HE8": [
+        "212.08",
+        "109.17"
+      ],
+      "HE9": [
+        "107.08",
+        "124.17"
+      ],
+      "HE10": [
+        "122.08",
+        "124.17"
+      ],
+      "HE11": [
+        "137.08",
+        "124.17"
+      ],
+      "HE12": [
+        "152.08",
+        "124.17"
+      ],
+      "HE13": [
+        "167.08",
+        "124.17"
+      ],
+      "HE14": [
+        "182.08",
+        "124.17"
+      ],
+      "HE15": [
+        "197.08",
+        "124.17"
+      ],
+      "HE16": [
+        "212.08",
+        "124.17"
+      ],
+      "HE17": [
+        "107.08",
+        "139.17"
+      ],
+      "HE18": [
+        "122.08",
+        "139.17"
+      ],
+      "HE19": [
+        "137.08",
+        "139.17"
+      ],
+      "HE20": [
+        "152.08",
+        "139.17"
+      ],
+      "HE21": [
+        "167.08",
+        "139.17"
+      ],
+      "HE22": [
+        "182.08",
+        "139.17"
+      ],
+      "HE23": [
+        "197.08",
+        "139.17"
+      ],
+      "HE24": [
+        "212.08",
+        "139.17"
+      ],
+      "HE25": [
+        "107.08",
+        "154.17"
+      ],
+      "HE26": [
+        "122.08",
+        "154.17"
+      ],
+      "HE27": [
+        "137.08",
+        "154.17"
+      ],
+      "HE28": [
+        "152.08",
+        "154.17"
+      ],
+      "HE29": [
+        "167.08",
+        "154.17"
+      ],
+      "HE30": [
+        "182.08",
+        "154.17"
+      ],
+      "HE31": [
+        "197.08",
+        "154.17"
+      ],
+      "HE32": [
+        "212.08",
+        "154.17"
+      ],
+      "HE33": [
+        "107.08",
+        "169.17"
+      ],
+      "HE34": [
+        "122.08",
+        "169.17"
+      ],
+      "HE35": [
+        "137.08",
+        "169.17"
+      ],
+      "HE36": [
+        "152.08",
+        "169.17"
+      ],
+      "HE37": [
+        "167.08",
+        "169.17"
+      ],
+      "HE38": [
+        "182.08",
+        "169.17"
+      ],
+      "HE39": [
+        "197.08",
+        "169.17"
+      ],
+      "HE40": [
+        "212.08",
+        "169.17"
+      ],
+      "HE41": [
+        "107.08",
+        "184.17"
+      ],
+      "HE42": [
+        "122.08",
+        "184.17"
+      ],
+      "HE43": [
+        "137.08",
+        "184.17"
+      ],
+      "HE44": [
+        "152.08",
+        "184.17"
+      ],
+      "HE45": [
+        "167.08",
+        "184.17"
+      ],
+      "HE46": [
+        "182.08",
+        "184.17"
+      ],
+      "HE47": [
+        "197.08",
+        "184.17"
+      ],
+      "HE48": [
+        "212.08",
+        "184.17"
+      ],
+      "HE49": [
+        "107.08",
+        "199.17"
+      ],
+      "HE50": [
+        "122.08",
+        "199.17"
+      ],
+      "HE51": [
+        "137.08",
+        "199.17"
+      ],
+      "HE52": [
+        "152.08",
+        "199.17"
+      ],
+      "HE53": [
+        "167.08",
+        "199.17"
+      ],
+      "HE54": [
+        "182.08",
+        "199.17"
+      ],
+      "HE55": [
+        "197.08",
+        "199.17"
+      ],
+      "HE56": [
+        "212.08",
+        "199.17"
+      ],
+      "HE57": [
+        "107.08",
+        "214.17"
+      ],
+      "HE58": [
+        "122.08",
+        "214.17"
+      ],
+      "HE59": [
+        "137.08",
+        "214.17"
+      ],
+      "HE60": [
+        "152.08",
+        "214.17"
+      ],
+      "HE61": [
+        "167.08",
+        "214.17"
+      ],
+      "HE62": [
+        "182.08",
+        "214.17"
+      ],
+      "HE63": [
+        "197.08",
+        "214.17"
+      ],
+      "HE64": [
+        "212.08",
+        "214.17"
+      ],
+      "DL1": [
+        "102.8",
+        "103.55",
+        "90"
+      ],
+      "DL2": [
+        "117.8",
+        "103.55",
+        "90"
+      ],
+      "DL3": [
+        "132.8",
+        "103.55",
+        "90"
+      ],
+      "DL4": [
+        "147.8",
+        "103.55",
+        "90"
+      ],
+      "DL5": [
+        "162.8",
+        "103.55",
+        "90"
+      ],
+      "DL6": [
+        "177.8",
+        "103.55",
+        "90"
+      ],
+      "DL7": [
+        "192.8",
+        "103.55",
+        "90"
+      ],
+      "DL8": [
+        "207.8",
+        "103.55",
+        "90"
+      ],
+      "DL9": [
+        "102.8",
+        "118.55",
+        "-90"
+      ],
+      "DL10": [
+        "117.8",
+        "118.55",
+        "-90"
+      ],
+      "DL11": [
+        "132.8",
+        "118.55",
+        "-90"
+      ],
+      "DL12": [
+        "147.8",
+        "118.55",
+        "-90"
+      ],
+      "DL13": [
+        "162.8",
+        "118.55",
+        "-90"
+      ],
+      "DL14": [
+        "177.8",
+        "118.55",
+        "-90"
+      ],
+      "DL15": [
+        "192.8",
+        "118.55",
+        "-90"
+      ],
+      "DL16": [
+        "207.8",
+        "118.55",
+        "-90"
+      ],
+      "DL17": [
+        "102.8",
+        "133.55",
+        "90"
+      ],
+      "DL18": [
+        "117.8",
+        "133.55",
+        "90"
+      ],
+      "DL19": [
+        "132.8",
+        "133.55",
+        "90"
+      ],
+      "DL20": [
+        "147.8",
+        "133.55",
+        "90"
+      ],
+      "DL21": [
+        "162.8",
+        "133.55",
+        "90"
+      ],
+      "DL22": [
+        "177.8",
+        "133.55",
+        "90"
+      ],
+      "DL23": [
+        "192.8",
+        "133.55",
+        "90"
+      ],
+      "DL24": [
+        "207.8",
+        "133.55",
+        "90"
+      ],
+      "DL25": [
+        "102.8",
+        "148.55",
+        "-90"
+      ],
+      "DL26": [
+        "117.8",
+        "148.55",
+        "-90"
+      ],
+      "DL27": [
+        "132.8",
+        "148.55",
+        "-90"
+      ],
+      "DL28": [
+        "147.8",
+        "148.55",
+        "-90"
+      ],
+      "DL29": [
+        "162.8",
+        "148.55",
+        "-90"
+      ],
+      "DL30": [
+        "177.8",
+        "148.55",
+        "-90"
+      ],
+      "DL31": [
+        "192.8",
+        "148.55",
+        "-90"
+      ],
+      "DL32": [
+        "207.8",
+        "148.55",
+        "-90"
+      ],
+      "DL33": [
+        "102.8",
+        "163.55",
+        "90"
+      ],
+      "DL34": [
+        "117.8",
+        "163.55",
+        "90"
+      ],
+      "DL35": [
+        "132.8",
+        "163.55",
+        "90"
+      ],
+      "DL36": [
+        "147.8",
+        "163.55",
+        "90"
+      ],
+      "DL37": [
+        "162.8",
+        "163.55",
+        "90"
+      ],
+      "DL38": [
+        "177.8",
+        "163.55",
+        "90"
+      ],
+      "DL39": [
+        "192.8",
+        "163.55",
+        "90"
+      ],
+      "DL40": [
+        "207.8",
+        "163.55",
+        "90"
+      ],
+      "DL41": [
+        "102.8",
+        "178.55",
+        "-90"
+      ],
+      "DL42": [
+        "117.8",
+        "178.55",
+        "-90"
+      ],
+      "DL43": [
+        "132.8",
+        "178.55",
+        "-90"
+      ],
+      "DL44": [
+        "147.8",
+        "178.55",
+        "-90"
+      ],
+      "DL45": [
+        "162.8",
+        "178.55",
+        "-90"
+      ],
+      "DL46": [
+        "177.8",
+        "178.55",
+        "-90"
+      ],
+      "DL47": [
+        "192.8",
+        "178.55",
+        "-90"
+      ],
+      "DL48": [
+        "207.8",
+        "178.55",
+        "-90"
+      ],
+      "DL49": [
+        "102.8",
+        "193.55",
+        "90"
+      ],
+      "DL50": [
+        "117.8",
+        "193.55",
+        "90"
+      ],
+      "DL51": [
+        "132.8",
+        "193.55",
+        "90"
+      ],
+      "DL52": [
+        "147.8",
+        "193.55",
+        "90"
+      ],
+      "DL53": [
+        "162.8",
+        "193.55",
+        "90"
+      ],
+      "DL54": [
+        "177.8",
+        "193.55",
+        "90"
+      ],
+      "DL55": [
+        "192.8",
+        "193.55",
+        "90"
+      ],
+      "DL56": [
+        "207.8",
+        "193.55",
+        "90"
+      ],
+      "DL57": [
+        "102.8",
+        "208.55",
+        "-90"
+      ],
+      "DL58": [
+        "117.8",
+        "208.55",
+        "-90"
+      ],
+      "DL59": [
+        "132.8",
+        "208.55",
+        "-90"
+      ],
+      "DL60": [
+        "147.8",
+        "208.55",
+        "-90"
+      ],
+      "DL61": [
+        "162.8",
+        "208.55",
+        "-90"
+      ],
+      "DL62": [
+        "177.8",
+        "208.55",
+        "-90"
+      ],
+      "DL63": [
+        "192.8",
+        "208.55",
+        "-90"
+      ],
+      "DL64": [
+        "207.8",
+        "208.55",
+        "-90"
+      ]
+    }
+  },
+  "pcb_schematic_mismatches": [],
+  "master_pcb_gpio_by_net": {
+    "/GPIO0": 0,
+    "/GPIO1": 1,
+    "/GPIO2": 2,
+    "/GPIO46": 46,
+    "/UART_RX": 18,
+    "/UART_TX": 17,
+    "/USB_DN": 19,
+    "/USB_DP": 20,
+    "DIG_OUT1": 13,
+    "DIG_OUT2": 14,
+    "DIG_OUT3": 4,
+    "DIG_OUT4": 5,
+    "DIG_OUT5": 11,
+    "DIG_OUT6": 12,
+    "DIG_OUT7": 6,
+    "DIG_OUT8": 7,
+    "EM_CTRL": 33,
+    "LED_IN_3V3": 21,
+    "MOTOR_EN": 38,
+    "MUX_IN1": 8,
+    "MUX_IN2": 9,
+    "MUX_IN3": 10,
+    "X_DIR": 34,
+    "X_STEP": 35,
+    "Y_DIR": 36,
+    "Y_STEP": 37,
+    "unconnected-(U1-GPIO3-Pad8)": 3,
+    "unconnected-(U1-GPIO45-Pad51)": 45
+  },
+  "connection": "IDC16 pin n to pin n",
+  "logical_coordinates": "HE1=a1, HE8=h1, HE57=a8, HE64=h8; viewing orientation requires physical verification",
+  "pcb_test": {
+    "gpio": 46,
+    "qfn_pad": 52,
+    "component": "D6",
+    "resistor": "R17 680 ohm to GND",
+    "level": "HIGH after application startup"
+  },
+  "sensor_matrix": [
+    {
+      "sensor": "HE1",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a1"
+    },
+    {
+      "sensor": "HE2",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b1"
+    },
+    {
+      "sensor": "HE3",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c1"
+    },
+    {
+      "sensor": "HE4",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d1"
+    },
+    {
+      "sensor": "HE5",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e1"
+    },
+    {
+      "sensor": "HE6",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f1"
+    },
+    {
+      "sensor": "HE7",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g1"
+    },
+    {
+      "sensor": "HE8",
+      "mux_address": 0,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h1"
+    },
+    {
+      "sensor": "HE9",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a2"
+    },
+    {
+      "sensor": "HE10",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b2"
+    },
+    {
+      "sensor": "HE11",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c2"
+    },
+    {
+      "sensor": "HE12",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d2"
+    },
+    {
+      "sensor": "HE13",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e2"
+    },
+    {
+      "sensor": "HE14",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f2"
+    },
+    {
+      "sensor": "HE15",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g2"
+    },
+    {
+      "sensor": "HE16",
+      "mux_address": 1,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h2"
+    },
+    {
+      "sensor": "HE17",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a3"
+    },
+    {
+      "sensor": "HE18",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b3"
+    },
+    {
+      "sensor": "HE19",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c3"
+    },
+    {
+      "sensor": "HE20",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d3"
+    },
+    {
+      "sensor": "HE21",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e3"
+    },
+    {
+      "sensor": "HE22",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f3"
+    },
+    {
+      "sensor": "HE23",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g3"
+    },
+    {
+      "sensor": "HE24",
+      "mux_address": 2,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h3"
+    },
+    {
+      "sensor": "HE25",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a4"
+    },
+    {
+      "sensor": "HE26",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b4"
+    },
+    {
+      "sensor": "HE27",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c4"
+    },
+    {
+      "sensor": "HE28",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d4"
+    },
+    {
+      "sensor": "HE29",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e4"
+    },
+    {
+      "sensor": "HE30",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f4"
+    },
+    {
+      "sensor": "HE31",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g4"
+    },
+    {
+      "sensor": "HE32",
+      "mux_address": 3,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h4"
+    },
+    {
+      "sensor": "HE33",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a5"
+    },
+    {
+      "sensor": "HE34",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b5"
+    },
+    {
+      "sensor": "HE35",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c5"
+    },
+    {
+      "sensor": "HE36",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d5"
+    },
+    {
+      "sensor": "HE37",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e5"
+    },
+    {
+      "sensor": "HE38",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f5"
+    },
+    {
+      "sensor": "HE39",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g5"
+    },
+    {
+      "sensor": "HE40",
+      "mux_address": 4,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h5"
+    },
+    {
+      "sensor": "HE41",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a6"
+    },
+    {
+      "sensor": "HE42",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b6"
+    },
+    {
+      "sensor": "HE43",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c6"
+    },
+    {
+      "sensor": "HE44",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d6"
+    },
+    {
+      "sensor": "HE45",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e6"
+    },
+    {
+      "sensor": "HE46",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f6"
+    },
+    {
+      "sensor": "HE47",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g6"
+    },
+    {
+      "sensor": "HE48",
+      "mux_address": 5,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h6"
+    },
+    {
+      "sensor": "HE49",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a7"
+    },
+    {
+      "sensor": "HE50",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b7"
+    },
+    {
+      "sensor": "HE51",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c7"
+    },
+    {
+      "sensor": "HE52",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d7"
+    },
+    {
+      "sensor": "HE53",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e7"
+    },
+    {
+      "sensor": "HE54",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f7"
+    },
+    {
+      "sensor": "HE55",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g7"
+    },
+    {
+      "sensor": "HE56",
+      "mux_address": 6,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h7"
+    },
+    {
+      "sensor": "HE57",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT1",
+      "logical_square": "a8"
+    },
+    {
+      "sensor": "HE58",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT2",
+      "logical_square": "b8"
+    },
+    {
+      "sensor": "HE59",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT3",
+      "logical_square": "c8"
+    },
+    {
+      "sensor": "HE60",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT4",
+      "logical_square": "d8"
+    },
+    {
+      "sensor": "HE61",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT5",
+      "logical_square": "e8"
+    },
+    {
+      "sensor": "HE62",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT6",
+      "logical_square": "f8"
+    },
+    {
+      "sensor": "HE63",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT7",
+      "logical_square": "g8"
+    },
+    {
+      "sensor": "HE64",
+      "mux_address": 7,
+      "sensor_input": "DIG_OUT8",
+      "logical_square": "h8"
+    }
+  ]
+}

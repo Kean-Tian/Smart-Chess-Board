@@ -15,7 +15,7 @@ sh pi5/start.sh ui
 
 The installer prepares the existing Pi Python environment, compiles the native chess-rules library, verifies the bundled ARM64 Stockfish, installs SQLite/SDL2 development libraries, builds the UI and runs checks. The first installation needs Internet access for apt and pinned LVGL. Completion does not automatically launch the application: use the second command.
 
-The launcher starts the local game service and then the UI. Escape closes the UI; the service saves an unfinished active game as interrupted. Only one UI/controller should run at a time. For a smaller desktop window:
+The launcher starts the local game service and then the UI. The top-left Quit Game button or Escape closes the UI; the service saves an unfinished active game as interrupted. Only one UI/controller should run at a time. For a smaller desktop window:
 
 ```sh
 sh pi5/start.sh ui --window
@@ -26,14 +26,14 @@ After source changes, rerun setup.sh when backend/dependencies changed. For C-on
 ## First actual game
 
 1. In **Players**, create saved profiles. PvP and Coaching require two different players; PvC needs one human profile.
-2. Close any serial terminal using the board. Connect SCB Master PCB V2 (ESP32-S3) to the Pi using a data USB cable and the tested sensor wiring/power supply.
+2. Close any serial terminal using the board. Connect SCB Master PCB V3 (ESP32-S3) to the Pi using a data USB cable and the tested sensor wiring/power supply.
 3. Open **New game**. Choose mode, assign actual players, select the human side for PvC, and choose 5 minutes, 10 minutes or no clock. In With coaching, White and Black must each explicitly choose AI coaching ON or OFF; all four combinations, including both OFF, are allowed.
 4. Open **Set up the board**. Select the USB serial port at the top and press **Connect board**. The main-menu **Board test** page can also connect the same board.
 5. Arrange the standard starting position and press **Check position**. A fresh matching full-board occupancy frame is required.
 6. Confirm the actual piece types and colors, then press **Start game**. Hall occupancy cannot identify piece types. Firmware coordinates are used unchanged; verify physical mapping before gameplay.
 7. Play on the physical board. A move advances the game only after legality and matching occupancy checks; accepted moves and clocks are saved transactionally.
 
-The main-menu **Board test** opens a live 64-square occupancy viewer with fixed firmware coordinates. `O` means occupied, a blank means empty, and `?` means unavailable. Tap a square to see its coordinate and state. Red borders identify differences from the current logical position, when one exists. No board rotation or mirror control is provided.
+The main-menu **Board test** opens a live 64-square occupancy viewer with fixed firmware coordinates. `O` means occupied, a blank means empty, and `?` means unavailable. Tap a square to see its coordinate and state. Red borders identify differences from the current logical position, when one exists. Diagnostic display orientation is separate from firmware and game coordinates.
 
 **Scan now** requests SCAN, STATUS and TIMING through the existing USB owner. It displays the MCU-reported full-board period/debounce interval and the separately measured USB SCAN round trip. Timing is unavailable until reported by the connected firmware; it is never replaced by a preset value. SCAN returns the firmware's latest debounced snapshot, not a guaranteed newly acquired frame. The board grid updates from sensor reports while the game continues; viewing the page does not reset or edit the game. It does not control LEDs, motors or the magnet.
 
@@ -148,3 +148,7 @@ cd ~/SCB_Pi5/pi5
 Input is hidden. The existing private `pi5/.openrouter-key` file is reused and excluded from Git/update archives. `OPENROUTER_API_KEY` overrides that file; `OPENROUTER_MODEL` selects a model, otherwise the existing default applies. No key is written into game records, UI state or screenshots.
 
 UI AI requests run in a separate worker, with an 8-second HTTP timeout, one attempt per request and a 10-second UI waiting limit. Failure shows an unavailable message without pausing human play or generating replacement advice. Old-position results and results disabled while pending are discarded. Changing networks may require retrying AI advice. Tests mock HTTP responses and do not charge an API account; real connectivity, credentials and model availability need verification on the Pi.
+
+## Board / Sensor Test display rotation
+
+The diagnostic board defaults to a PCB-oriented view with a1 at the top left. Tap `View: ... CW` above the grid to cycle 0 -> 90 -> 180 -> 270 degrees clockwise. Square positions, edge labels, tap selection, occupancy colors and mismatch borders move together. The choice is kept while this application is running; restarting restores the PCB-oriented default. This affects only the diagnostic display, not firmware coordinates, LED mapping, game setup, saved positions or replay. Rotating does not disconnect USB, scan, move a piece or alter the active game.

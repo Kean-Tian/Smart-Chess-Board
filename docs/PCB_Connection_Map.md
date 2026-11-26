@@ -1,55 +1,54 @@
-# PCB V2 Connection Map
+# Master PCB V3 + Sensor PCB V2.2 Connection Map
 
-Source: the user-supplied `SCBMasterPCBV2.zip` and `SCBSensorPCBV2 (1).zip`, inspected 2026-11-23 using KiCad XML netlists and PCB pad nets. Evidence and source SHA-256 values are in [connections.json](../hardware/pcb_v2/connections.json). QFN pad numbers are not GPIO numbers.
+Sources: the top-level current files in `SCBMasterPCBV3.zip` and `SCBSensorPCBV2.2.zip`, inspected 2026-11-24. The `_restore_backup_...` schematic in the master ZIP is historical and excluded. Source SHA-256 values, exported net assignments and all 64 LED connections are recorded in [connections.json](../hardware/pcb_v3/connections.json). MCU/connector pad nets agree between the supplied current schematics and PCB files. GPIO numbers are not QFN pad numbers.
 
-## Cable: straight IDC16, pin n to pin n
+## Straight IDC16 cable: master J4.n to sensor J1.n
 
-Master J4 and sensor J1 do NOT put every matching signal name on the same contact. Firmware remaps the sensor inputs and address bits to compensate; do not connect by label name with this default.
+Master and sensor DIG_OUT labels now agree. MUX_IN1 and MUX_IN3 still occupy opposite contacts, so firmware compensates the address order.
 
-| Sensor function | Sensor J1 contact | Master J4 net on that contact | S3 GPIO |
+| Sensor function | J1 / J4 contact | Master net | S3 GPIO |
 |---|---:|---|---:|
-| Sensor A0 / MUX_IN1 | 11 | MUX_IN3 | 6 |
-| Sensor A1 / MUX_IN2 | 13 | MUX_IN2 | 5 |
-| Sensor A2 / MUX_IN3 | 15 | MUX_IN1 | 4 |
-| DIG_OUT1 / column 1 | 3 | DIG_OUT7 | 13 |
-| DIG_OUT2 / column 2 | 1 | DIG_OUT8 | 14 |
-| DIG_OUT3 / column 3 | 2 | DIG_OUT4 | 10 |
-| DIG_OUT4 / column 4 | 4 | DIG_OUT3 | 9 |
-| DIG_OUT5 / column 5 | 7 | DIG_OUT5 | 11 |
-| DIG_OUT6 / column 6 | 5 | DIG_OUT6 | 12 |
-| DIG_OUT7 / column 7 | 6 | DIG_OUT2 | 8 |
-| DIG_OUT8 / column 8 | 8 | DIG_OUT1 | 7 |
-| LED data after level shifter | 9 | LED_IN | 2, before U5 74AHCT1G125 |
-| GND | 10, 12 | GND | Common ground |
-| Sensor logic supply | 14 | +3V3 | Power, not GPIO |
-| Comparators and LEDs | 16 | +5V | Power, not GPIO |
+| A0 / MUX_IN1 | 11 | MUX_IN3 | 10 |
+| A1 / MUX_IN2 | 13 | MUX_IN2 | 9 |
+| A2 / MUX_IN3 | 15 | MUX_IN1 | 8 |
+| DIG_OUT1 | 3 | DIG_OUT1 | 13 |
+| DIG_OUT2 | 1 | DIG_OUT2 | 14 |
+| DIG_OUT3 | 2 | DIG_OUT3 | 4 |
+| DIG_OUT4 | 4 | DIG_OUT4 | 5 |
+| DIG_OUT5 | 7 | DIG_OUT5 | 11 |
+| DIG_OUT6 | 5 | DIG_OUT6 | 12 |
+| DIG_OUT7 | 6 | DIG_OUT7 | 6 |
+| DIG_OUT8 | 8 | DIG_OUT8 | 7 |
+| LED data | 9 | LED_IN after U5 level shifter | 21 before U5 |
+| Common GND | 10, 12 | GND | Power return |
+| Sensor logic power | 14 | +3V3 | Not GPIO |
+| Comparator/LED power | 16 | +5V | Not GPIO |
 
-`SCB_COLUMN_PINS` is sensor DIG_OUT1..8 order, not master label order. `SENSOR inputs=` remains in sensor column order. A name-crossed custom harness requires `CONFIG_SCB_SENSOR_NAMED_WIRING=y`; that is not the selected straight-cable connection.
+`SCB_COLUMN_PINS` is sensor DIG_OUT1..8 order. Native protocol SENSOR input bits follow that order. A verified custom cable crossed by MUX signal names requires `CONFIG_SCB_SENSOR_NAMED_WIRING=y` (A0/A1/A2 then use GPIO8/9/10); this is not the default straight cable.
 
-## Main outputs and communication
+## Outputs and communication
 
-| Function | Schematic GPIO | PCB pad-net GPIO |
-|---|---:|---:|
-| LED_IN_3V3 | 2 | 2 |
-| EM_CTRL (active HIGH) | 33 | 33 |
-| X_STEP | 34 | 35 |
-| X_DIR | 35 | 34 |
-| Y_STEP | 36 | 37 |
-| Y_DIR | 37 | 36 |
-| MOTOR_EN (both drivers, active LOW) | 38 | 38 |
-| Native USB D- / D+ | 19 / 20 | 19 / 20 |
-| J6 TX / RX | 18 / 17 | 18 / 17 |
+| Function | S3 GPIO | Notes |
+|---|---:|---|
+| LED data | 21 | U5 74AHCT1G125 to J4.9 |
+| Electromagnet | 33 | EM_CTRL, active HIGH |
+| X STEP / DIR | 35 / 34 | Schematic and PCB agree |
+| Y STEP / DIR | 37 / 36 | Schematic and PCB agree |
+| Both motor enables | 38 | Active LOW |
+| GPIO46 PCB test | 46 | QFN pad 52, D6 anode; D6 cathode through R17 680 ohm to GND |
+| J5 native USB D- / D+ | 19 / 20 | USB Serial/JTAG, not a CP210x bridge |
+| J6 UART1 TX / RX | 17 / 18 | J6.1 TX, J6.2 RX, J6.3 GND |
 
-**The four motor assignments differ between the supplied schematic and PCB.** The user confirmed fabrication from the supplied PCB. The selected default is `CONFIG_SCB_MOTOR_PCB_ROUTING=y`: X STEP=35/DIR=34 and Y STEP=37/DIR=36. Disable this option only for hardware wired according to the conflicting schematic. Record the selected variant in the release manifest and verify before powering actuators. Software cannot determine which copper was manufactured.
+The main firmware preloads GPIO46 HIGH, then enables its output after application startup. D6 should illuminate if assembled and electrically correct. Firmware does not control reset/download strapping levels; do not externally force GPIO46 HIGH during download entry. This is a requested persistent test output, not a sensor-select pin.
 
-J5 is native USB-B, not a CP210x bridge. J5 VBUS contact 1 is explicitly unconnected: USB does not power the board. Supply the PCB through its intended external power input. J6 is a 3.3 V application UART1; cross Pi TX to J6 RX and Pi RX to J6 TX with common ground. ROM UART0 pins 43/44 are unconnected, so J6 does not provide the usual ROM UART flashing path. Use J5 native USB and BOOT/RESET for initial flashing.
+J5 VBUS is connected to U6 ESD protection and C31, not to the system +5V rail. USB alone does not power the board: use the intended external supply. Initial programming uses J5 native USB and BOOT/RESET. J6 is a 3.3 V application UART1, not ROM UART0; the ROM pins GPIO43/44 remain unconnected. For wired UART, cross host TX to J6 RX and host RX to J6 TX with common ground.
 
-## Sensor and LED coordinates
+## Sensing and physical verification
 
-The sensor decoder is 74HC138: selected output is inverted by 74HC04 to power one row of eight DRV5053 sensors. Settling remains 1 ms and complete scans target 10 ms, with two identical whole-board snapshots. The comparators are LM339, powered from 5 V, with 4.7k output pull-ups to 3.3 V. The reference divider R18=100k/R19=82k gives about 1.49 V at nominal 3.3 V; it is not a software threshold. Magnet orientation and real voltage margins must be measured.
+The decoder remains 74HC138 followed by 74HC04 row power inversion, with DRV5053 sensors and LM339 comparators. LM339 power is 5 V; its outputs have 4.7k pull-ups to 3.3 V. R18=100k/R19=82k produce about 1.49 V reference from nominal 3.3 V. Firmware observes digital levels and cannot adjust that analog threshold. HIGH occupancy is the initial default; verify with the actual magnets and an empty board.
 
-Logical reference is HE1=a1, HE8=h1, HE57=a8, HE64=h8. This is an indexing convention, not a claim about the observer's physical corner. Verify four corners/all squares on the assembled board. The LED chain is DL1..DL8, DL16..DL9, DL17..DL24, etc., matching the existing serpentine mapping; all 64 indices are checked against the netlist. Both orientation flags remain zero. Do not silently mask an empty-board false positive.
+Nominal full scans remain 10 ms / 100 Hz with 1 ms row settling and two matching complete frames. These are software targets, not new hardware measurements. The row inverter directly supplies eight sensors; verify voltage/current margins when diagnosing false occupancy.
 
-## Electrical limitations
+Logical indexing remains HE1=a1, HE8=h1, HE57=a8, HE64=h8; verify the assembled viewing direction and every square. The 64-LED chain retains serpentine ordering. No automatic polarity/orientation correction or false-positive masking is applied.
 
-The row inverter directly supplies eight Hall devices; verify row voltage/current and startup at the PCB rather than assuming software settling fixes supply droop. No endstop/home input or temperature sensor is connected in these schematics. HOME therefore continues returning NO_HOME_SWITCHES. A4988 MS1/MS2/MS3 are grounded (full steps); phase current is set in hardware, not by firmware. Motor direction, CoreXY coefficients, steps/mm and carriage reference are mechanical calibrations and are not inferred from net names.
+No home switches or temperature inputs are connected. HOME continues returning NO_HOME_SWITCHES. Step scale, direction, CoreXY calibration, driver phase current and reliable piece transport require real hardware tests and are not inferred from GPIO names.

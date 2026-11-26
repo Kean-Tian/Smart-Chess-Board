@@ -1,6 +1,6 @@
 # MCU–Pi USB Protocol v1
 
-The current MCU is **SCB Master PCB V2 (bare ESP32-S3)**. J5 USB-B is directly wired to native USB Serial/JTAG on GPIO19/20, not a CP210x bridge. J5 VBUS is unconnected, so external PCB power is required. Default USB device names are `/dev/ttyACM0` on Pi and a detected `/dev/cu.usbmodem*` on macOS. A wired-UART firmware option uses J6 TX18/RX17 (UART1) at 115200 8N1; ROM UART0 pins43/44 are unconnected. USB and UART are mutually exclusive application transports selected at build time. The same line protocol is retained. See [PCB connection map](PCB_Connection_Map.md).
+The current MCU is **SCB Master PCB V3 (bare ESP32-S3)**. J5 USB-B is directly wired to native USB Serial/JTAG on GPIO19/20, not a CP210x bridge. J5 VBUS connects to ESD protection and a capacitor, not the system power rail, so external PCB power is required. Default USB device names are `/dev/ttyACM0` on Pi and a detected `/dev/cu.usbmodem*` on macOS. A wired-UART firmware option uses J6 TX17/RX18 (UART1) at 115200 8N1; ROM UART0 pins43/44 are unconnected. USB and UART are mutually exclusive application transports selected at build time. The same line protocol is retained. See [PCB connection map](PCB_Connection_Map.md).
 
 ## Framing
 
@@ -8,7 +8,7 @@ The current MCU is **SCB Master PCB V2 (bare ESP32-S3)**. J5 USB-B is directly w
 - `@42 STATUS` uses an optional nonnegative request ID, 0..2147483647. Omitting the prefix uses ID 0. The Python client supplies IDs to match concurrent replies.
 - Requests have a maximum of 127 bytes before LF. Overflow or invalid control bytes cause the complete line to be discarded through LF.
 - Replies include `ACK 42 COMMAND`, `ERR 42 REASON`, `DONE 42 MOTION` and `STATUS 42 armed=0 moving=0 magnet=0 origin=0 steps=0 polarity=HIGH`.
-- Boot identifier: `HELLO SCB_MASTER_PCB_V2_S3 1`. It is sent once and may be missed when opening later.
+- Boot identifier: `HELLO SCB_MASTER_PCB_V3_S3 1`. It is sent once and may be missed when opening later.
 - Unsolicited messages include BOARD, SENSOR, EVENT and FAULT.
 - BOARD/RAW masks contain exactly 16 hexadecimal digits, with bit0=a1, bit7=h1 and bit63=h8. These are logical coordinates; physical board orientation is not yet calibrated.
 - Under TX backpressure, only complete lines are dropped. A command may then time out. Motion requests must not be automatically replayed.
@@ -24,14 +24,14 @@ The Python terminal renders these as:
 
 ```text
 BOARD | OCCUPY=h1
-MUX(A2,A1,A0)=000 [GPIO6,5,4=000] | INPUTS(DIG_OUT1..8)=00000001 | OCCUPY=h1 | frame=2
+MUX(A2,A1,A0)=000 [GPIO10,9,8=000] | INPUTS(DIG_OUT1..8)=00000001 | OCCUPY=h1 | frame=2
 ```
 
-- `mux` is A2,A1,A0; the bracketed GPIO levels are A0,A1,A2. Address 001 therefore has GPIO6,5,4 = 100.
+- `mux` is A2,A1,A0; the bracketed GPIO levels are A0,A1,A2. Address 001 therefore has GPIO10,9,8 = 100.
 - `inputs` contains the captured raw electrical levels in DIG_OUT1..8 order. Its leftmost character is DIG_OUT1, not DIG_OUT8.
 - `occupy` is the whole debounced board, not just this row. Raw inputs, row address and occupancy belong to the same accepted frame.
-- HIGH currently means occupied. Empty/full terminal masks display `无棋子` / `全部64格`; the transmitted masks remain hexadecimal.
-- Automatic SENSOR reports cover occupied rows after board changes and are coalesced to at most five snapshots per second, with up to eight row lines per snapshot. This is a debug-output limit, not a 5 Hz scan rate. SCAN forces an immediate snapshot of the latest stable occupied rows. An empty board produces BOARD zero without occupied-row SENSOR lines.
+- HIGH currently means occupied. Empty/full terminal masks display `Empty` / `All 64 squares`; the transmitted masks remain hexadecimal.
+- Automatic SENSOR reports include occupied and changed rows, including the row where the last magnet was removed. They are coalesced to at most five snapshots per second, with up to eight row lines per snapshot. This limits debug traffic, not the nominal 100 Hz full-board scanning schedule. SCAN bypasses the trace throttle and reports all eight rows from the latest accepted snapshot, including empty rows. INPUTS shows captured electrical levels; OCCUPY follows the selected polarity.
 - `frame` identifies the accepted scan frame. It is not a square number. A logical `h1` result does not by itself mean physical top-right; the user observed it at physical lower-left. See the orientation procedure in the test guide.
 
 ## Commands
@@ -91,3 +91,9 @@ esp32/.venv/bin/python pi5/app/scb_link.py --port PORT
 ```
 
 Enter PING, STATUS, SCAN, RAW, INPUTS and TIMING. Keep actuator power disconnected. Use [the S3 test guide](ESP32_S3_Test_Guide.md) before LED or motion testing; no universal steps-per-square calibration is supplied.
+
+## Raw versus confirmed sensor diagnostics
+
+`SCAN` reports the latest confirmed occupancy and its captured row inputs. Its frame number now refreshes when an unchanged board is reconfirmed; this does not emit duplicate move events. If inputs keep changing before the required matching frames, the last confirmed board remains available and its frame number remains older.
+
+`RAW TRACE` reports the latest COMPLETE, pre-debounce scan as the existing RAW mask plus eight `SENSOR_RAW` rows. The interactive Python terminal sends this verbose form when the user types RAW. Plain RAW remains a compact mask for automated sampling. These rows use a separate completed-frame input buffer, not live partially overwritten scan storage. RAW is available after the first complete scan, even before the board first stabilizes. The terminal prefixes these rows with `RAW (before debounce)`; game logic must not treat them as accepted moves. Comparing RAW with SCAN distinguishes a stable signal from a stale confirmed snapshot; it does not calibrate sensor thresholds or prove physical wiring.

@@ -118,6 +118,15 @@ class FirmwareReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "not an ESP32-S3" if other_chip is not None else "checksum mismatch"):
                     self.flash.validate_release(temp)
 
+    def test_previous_board_pin_map_is_rejected_even_with_same_chip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            manifest = json.loads((self.release / 'flash_manifest.json').read_text())
+            manifest['board'] = 'SCB Master PCB V2 ESP32-S3'
+            (temp / 'flash_manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'PCB V3'):
+                self.flash.validate_release(temp)
+
     def test_uncompressed_low_baud_flash_is_explicit_and_dry_run_only(self):
         with patch.object(self.flash, 'RELEASE', self.release), \
                 patch.object(self.flash.subprocess, 'call') as execute, \

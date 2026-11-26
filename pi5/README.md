@@ -126,7 +126,7 @@ The shared library is placed in `build/lib/`, and the console in `build/bin/`. T
 Set `STOCKFISH_EXECUTABLE` to select a Stockfish executable for another platform. The Pi defaults to the bundled Linux ARM64 version; the entry point for the current Mac is in the project root.
 
 The Pi maintains the chess rules and logical board state. Both Stockfish and OpenRouter results must pass rules validation. After an illegal move, the physical board must be restored. Use `commit <uci>` to resolve promotions or ambiguous multi-square changes; matching occupancy is still required.
-This directory does not access Pi GPIO. All hardware operations are sent through the SCB Master PCB V2 (ESP32-S3) native USB protocol on GPIO19/20 (J5). Optional wired-UART firmware uses TX18/RX17 at J6; USB requires no Pi GPIO wiring.
+This directory does not access Pi GPIO. All hardware operations are sent through the SCB Master PCB V3 (ESP32-S3) native USB protocol on GPIO19/20 (J5). Optional wired-UART firmware uses TX17/RX18 at J6; USB requires no Pi GPIO wiring.
 
 ## Square LED Move Hints
 

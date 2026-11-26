@@ -6,7 +6,7 @@
 
 esp_err_t scb_transport_init(void) {
 #if CONFIG_SCB_LINK_UART
-    /* GPIO17/18 are broken out at J6. UART0 ROM pins 43/44 are unconnected. */
+    /* GPIO17 TX / GPIO18 RX are broken out at J6. UART0 ROM pins 43/44 are unconnected. */
     const uart_config_t config = {.baud_rate = SCB_UART_BAUD,
         .data_bits = UART_DATA_8_BITS, .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1, .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,

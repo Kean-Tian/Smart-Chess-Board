@@ -23,7 +23,7 @@ typedef enum {
     A_USE_PLAYER, A_PREPARE, A_CHECK, A_VERIFIED, A_START, A_PAUSE, A_END,
     A_CONFIRM_END, A_HINT, A_CONFIRM_MOVE, A_PROMOTE, A_CONNECT,
     A_HISTORY_PAGE, A_REVIEW, A_REVIEW_STEP, A_GUIDANCE, A_SCAN, A_SQUARE, A_CONFIRM_COMPUTER, A_COACH, A_COACH_RETRY,
-    A_RESET_FAULT, A_EXECUTE_COMPUTER
+    A_RESET_FAULT, A_EXECUTE_COMPUTER, A_ROTATE_DIAGNOSTICS, A_QUIT
 } Action;
 typedef struct {
     lv_obj_t *obj;
@@ -38,6 +38,7 @@ static PlayerStore store;
 static ScbPlayer rows[SCB_PLAYER_PAGE_SIZE], selected;
 static int row_count, player_count, page_offset;
 static bool data_ok;
+static bool quit_requested;
 static int64_t editing_id, deleting_id;
 static lv_obj_t *name_input, *form_error;
 static char database_path[4096];
@@ -50,7 +51,7 @@ static struct {
     int mode, human, minutes, pick_side, port_index, history_offset, review_return;
     ScbPlayer white, black;
     bool verified, show_hint, ending, review_pending, reconnecting, guidance;
-    int selected_square, coach[2];
+    int selected_square, coach[2], diagnostic_rotation;
     int64_t review_id, review_ply, review_total;
     char instruction_move[8];
 } config;
@@ -176,6 +177,7 @@ static void shell(const char *title, const char *subtitle) {
     lv_obj_set_style_bg_color(root(), lv_color_hex(BG), 0);
     lv_obj_set_style_text_color(root(), lv_color_hex(INK), 0);
     lv_obj_remove_flag(root(), LV_OBJ_FLAG_SCROLLABLE);
+    button(root(), "Quit Game", 32, 16, 240, 56, false, "quit-game", A_QUIT, 0, "desktop");
     if(current != UI_HOME) {
         /* 回放可能从不同页面进入，返回时使用记住的来源。 */
         UiScreen back = current == UI_PLAYER_EDITOR ? UI_PROFILES :
@@ -515,8 +517,18 @@ static void active_game(void) {
     disable(button(root(), "Board connection", 368, 1140, 320, 80, false, "game-connection", A_NAV, UI_BOARD_SETUP, "board-setup"),
             !state_flag("$.active"));
 }
+/* 将屏幕格子反算为原始棋盘坐标；旋转只改变显示，不修改传感器数据。 */
+static int diagnostic_square(int row, int column, int quarter_turns) {
+    int file = column, rank = row;
+    for(int i = 0; i < quarter_turns; ++i) {
+        int old_file = file;
+        file = 7-rank;
+        rank = old_file;
+    }
+    return rank*8+file;
+}
 static void diagnostics(void) {
-    /* 固定坐标直接对应固件；未知数据用 ?，不会误画成空盘。 */
+    /* 颜色、坐标标签和触摸格子一起旋转；未知数据仍显示 ?。 */
     shell("Board / Sensor Test", "Live occupancy only / piece types are not detected.");
     port_dropdown = lv_dropdown_create(root());
     lv_obj_set_pos(port_dropdown, 32, 270);
@@ -527,19 +539,26 @@ static void diagnostics(void) {
     port_options[0] = '\0';
     connection_button = button(root(), "Connect", 480, 270, 208, 72, true, "connect-board", A_CONNECT, 0, NULL);
     lv_obj_set_style_text_font(connection_button, font(24), 0);
-    text(root(), "O = occupied   blank = empty   ? = unavailable", 32, 358, 656, 20, MUTED);
+    text(root(), "O occupied / blank empty / ? unknown", 32, 358, 432, 20, MUTED);
+    char rotation[48];
+    snprintf(rotation, sizeof(rotation), "View: %d CW " LV_SYMBOL_REFRESH, config.diagnostic_rotation*90);
+    lv_obj_t *rotate = button(root(), rotation, 480, 350, 208, 48, false,
+                             "rotate-board", A_ROTATE_DIAGNOSTICS, 0, NULL);
+    lv_obj_set_style_text_font(rotate, font(20), 0);
     for(int r = 0; r < 8; ++r) {
-        char rank[2] = {(char)('8'-r), 0};
+        int left = diagnostic_square(r, 0, config.diagnostic_rotation);
+        char rank[2] = {(char)((config.diagnostic_rotation & 1) ? 'a'+left%8 : '1'+left/8), 0};
         text(root(), rank, 82, 420+r*62, 24, 20, MUTED);
         for(int c = 0; c < 8; ++c) {
-            int square = (7-r)*8+c;
+            int square = diagnostic_square(r, c, config.diagnostic_rotation);
             sensor_tiles[square] = button(root(), "?", 112+c*62, 400+r*62, 62, 62, false,
                                          "sensor-square", A_SQUARE, square, NULL);
             lv_obj_set_style_radius(sensor_tiles[square], 0, 0);
         }
     }
     for(int c = 0; c < 8; ++c) {
-        char file[2] = {(char)('a'+c), 0};
+        int bottom = diagnostic_square(7, c, config.diagnostic_rotation);
+        char file[2] = {(char)((config.diagnostic_rotation & 1) ? '1'+bottom/8 : 'a'+bottom%8), 0};
         text(root(), file, 136+c*62, 908, 24, 20, MUTED);
     }
     sensor_detail = text(root(), "", 32, 950, 656, 24, INK);
@@ -934,6 +953,8 @@ static void click(lv_event_t *event) {
     if(lv_obj_has_state(hit.obj, LV_STATE_DISABLED)) return;
     switch(hit.action) {
         case A_NONE: break;
+        /* 交给主循环正常退出，继续执行窗口、数据库及后台清理。 */
+        case A_QUIT: quit_requested = true; break;
         case A_NAV:
             if(hit.value == UI_PROFILES && current == UI_HOME) config.pick_side = -1;
             scb_ui_show((UiScreen)hit.value);
@@ -1030,6 +1051,10 @@ static void click(lv_event_t *event) {
             break;
         }
         case A_SQUARE: config.selected_square = (int)hit.value; refresh_live(); break;
+        case A_ROTATE_DIAGNOSTICS:
+            config.diagnostic_rotation = (config.diagnostic_rotation+1)%4;
+            scb_ui_show(UI_DIAGNOSTICS);
+            break;
         case A_CONFIRM_COMPUTER: {
             char move[8];
             if(ui_json_text(&bridge, bridge.state, "$.computer_move", move, sizeof(move)))
@@ -1100,9 +1125,11 @@ void scb_ui_show(UiScreen screen) {
 void scb_ui_init(const char *path) {
     /* 打开玩家库、初始化本机通信，再显示首页。 */
     page_offset = 0;
+    quit_requested = false;
     editing_id = deleting_id = 0;
     memset(&config, 0, sizeof(config));
     config.minutes = 10;
+    config.diagnostic_rotation = 0; /* PCB 丝印朝上、接口在左：HE1 从左上角开始。 */
     config.coach[0] = config.coach[1] = -1;
     config.pick_side = -1;
     config.review_return = UI_HISTORY;
@@ -1113,6 +1140,7 @@ void scb_ui_init(const char *path) {
     scb_ui_show(UI_HOME);
 }
 void scb_ui_shutdown(void) { ui_bridge_close(&bridge); player_store_close(&store); }
+bool scb_ui_quit_requested(void) { return quit_requested; }
 void scb_ui_preview_setup(int mode) {
     /* 仅供离线版式渲染，不向后台发送设置。 */
     if(!bridge.disabled || mode < 0 || mode > 2) return;
@@ -1195,7 +1223,28 @@ static bool label_bounds(lv_obj_t *parent) {
 bool scb_ui_smoke_test(void) {
     /* The host supplies an isolated temporary database for this test. */
     if(!data_ok || player_count || selected.id) return false;
-    if(!press("diagnostics") || current != UI_DIAGNOSTICS || !press("back") || current != UI_HOME) return false;
+    if(!press("diagnostics") || current != UI_DIAGNOSTICS || config.diagnostic_rotation != 0) return false;
+    const int corners[4][4] = {{0,7,56,63}, {7,63,0,56}, {63,56,7,0}, {56,0,63,7}};
+    for(int turn = 0; turn < 4; ++turn) {
+        int rotation = config.diagnostic_rotation;
+        bool seen[64] = {false};
+        for(int row = 0; row < 8; ++row) for(int col = 0; col < 8; ++col) {
+            int square = diagnostic_square(row, col, rotation);
+            if(square < 0 || square >= 64 || seen[square]) return false;
+            seen[square] = true;
+            if(lv_obj_get_x(sensor_tiles[square]) != 112+col*62 ||
+               lv_obj_get_y(sensor_tiles[square]) != 400+row*62) return false;
+        }
+        if(diagnostic_square(0,0,rotation) != corners[rotation][0] ||
+           diagnostic_square(0,7,rotation) != corners[rotation][1] ||
+           diagnostic_square(7,0,rotation) != corners[rotation][2] ||
+           diagnostic_square(7,7,rotation) != corners[rotation][3]) return false;
+        /* 点击旋转后的左上格，仍须选中其真正逻辑坐标。 */
+        lv_obj_send_event(sensor_tiles[corners[rotation][0]], LV_EVENT_CLICKED, NULL);
+        if(config.selected_square != corners[rotation][0] || !label_bounds(root())) return false;
+        if(!press("rotate-board")) return false;
+    }
+    if(config.diagnostic_rotation != 0 || !press("back") || current != UI_HOME) return false;
     if(!press("new-game") || current != UI_SETUP) return false;
     if(!press("mode-computer") || config.mode != 1) return false;
     for(unsigned i = 0; i < hit_count; ++i) if(hits[i].action == A_GUIDANCE) return false;
@@ -1238,6 +1287,8 @@ bool scb_ui_smoke_test(void) {
             lv_obj_get_coords(hits[j].obj, &a);
             if(a.x1 < 0 || a.y1 < 0 || a.x2 >= 720 || a.y2 >= 1280) return false;
         }
+        if(scb_ui_quit_requested() || !press("quit-game") || !scb_ui_quit_requested()) return false;
+        quit_requested = false;
     }
     scb_ui_show(UI_SETUP);
     if(!press("mode-coach") || config.coach[0] != -1 || config.coach[1] != -1) return false;
@@ -1298,6 +1349,12 @@ bool scb_ui_service_test(void) {
     if(!wait_json(bridge.state, "$.scan_timing.frame_us", "10000")) return false;
     if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[28], 0)), "O")) return false;
     if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[12], 0)), "")) return false;
+    for(int i = 0; i < 4; ++i) {
+        if(!press("rotate-board") || !state_flag("$.active") || !state_flag("$.paused")) return false;
+        if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[28], 0)), "O") ||
+           strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[12], 0)), "")) return false;
+    }
+    if(config.diagnostic_rotation != 0) return false;
     if(!press("back") || !press("continue-game") || current != UI_GAME || !state_flag("$.paused")) return false;
     if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "1")) return false;
     if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "0")) return false;

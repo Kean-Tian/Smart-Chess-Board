@@ -33,7 +33,7 @@ def parse_frame(line: str) -> Frame:
             raise ValueError("Malformed occupancy frame")
         int(parts[1], 16)
         return Frame(kind, None, parts[1])
-    if kind in {"EVENT", "FAULT", "HELLO", "SENSOR"}:
+    if kind in {"EVENT", "FAULT", "HELLO", "SENSOR", "SENSOR_RAW"}:
         return Frame(kind, None, line.strip()[len(kind):].strip())
     raise ValueError("Unknown frame")
 
@@ -51,6 +51,15 @@ def format_occupancy(payload: str) -> str:
                      for square in range(64) if mask & (1 << square))
 
 
+def normalize_terminal_command(line: str) -> str:
+    """Accept lowercase command names, but never send terminal escape bytes."""
+    if any((ord(ch) < 32 and ch != '\t') or ord(ch) > 126 for ch in line):
+        raise ValueError("Input contains Esc/control characters or non-ASCII text. "
+                         "Press Ctrl+U and retype SCAN using plain text.")
+    parts = line.split()
+    return " ".join([parts[0].upper(), *parts[1:]]) if parts else ""
+
+
 # Format replies and sensor events for the terminal without changing the wire protocol.
 def format_frame(frame: Frame) -> str:
     if frame.kind in {"BOARD", "RAW"}:
@@ -59,13 +68,14 @@ def format_frame(frame: Frame) -> str:
             return f"{label} | OCCUPY={format_occupancy(frame.payload)}"
         except ValueError:
             pass
-    if frame.kind == "SENSOR":
+    if frame.kind in {"SENSOR", "SENSOR_RAW"}:
         try:
             fields = dict(token.split("=", 1) for token in frame.payload.split())
             pins = [fields[name].split(":", 1) for name in ("A0", "A1", "A2")]
             gpio = ",".join(pin for pin, _ in pins)
             levels = "".join(level for _, level in pins)
-            return (f"MUX(A2,A1,A0)={fields['mux']} [GPIO{gpio}={levels}] | "
+            prefix = "RAW (before debounce) | " if frame.kind == "SENSOR_RAW" else ""
+            return (f"{prefix}MUX(A2,A1,A0)={fields['mux']} [GPIO{gpio}={levels}] | "
                     f"INPUTS(DIG_OUT1..8)={fields['inputs']} | "
                     f"OCCUPY={format_occupancy(fields['occupy'])} | frame={fields['frame']}")
         except (ValueError, KeyError):
@@ -178,8 +188,9 @@ class ScbLink:
 
     # Send one ASCII command line with a request ID; serialize concurrent writes.
     def _write(self, command, request_id):
-        if not command or any(c in command for c in "\r\n\x00"):
-            raise ValueError("Command must be one ASCII line")
+        if not command or any((ord(ch) < 32 and ch != '\t') or ord(ch) > 126
+                              for ch in command):
+            raise ValueError("Command must be one printable ASCII line; no Esc/control characters")
         payload = f"@{request_id} {command}\n".encode("ascii")
         if len(payload) > 127:
             raise ValueError("Command too long")
@@ -317,11 +328,13 @@ class ScbLink:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Smart Chess Board USB terminal")
-    parser.add_argument("--port", default="/dev/ttyACM0", help="Actual serial port of the development board")
+    parser.add_argument("--port", default="/dev/ttyACM0", help="Actual USB serial port of the PCB")
     args = parser.parse_args()
     with ScbLink.open(args.port) as link:
         print("Connected. Enter STATUS, SCAN, RAW, INPUTS, or quit.")
-        print("Board and occupied-row sensor updates appear automatically.")
+        print("Magnet placement/removal updates MUX, INPUTS and OCCUPY automatically.")
+        print("INPUTS order: DIG_OUT1..8 = GPIO13,14,4,5,11,12,6,7 on PCB V3.")
+        print("SCAN shows all 8 MUX rows. OCCUPY uses logical chess coordinates.")
         try:
             print_scan_report(link)
         except (DeviceError, TimeoutError) as exc:
@@ -338,10 +351,14 @@ if __name__ == "__main__":
                     print("SCB > ", end="", flush=True)
                 if not select.select([sys.stdin], [], [], 0.05)[0]:
                     continue
-                command = input().strip()
+                command = normalize_terminal_command(input())
             except (EOFError, KeyboardInterrupt):
                 break
-            if command.lower() == "quit":
+            except ValueError as exc:
+                print(exc)
+                print("SCB > ", end="", flush=True)
+                continue
+            if command == "QUIT":
                 break
             if not command:
                 print("SCB > ", end="", flush=True)
@@ -349,6 +366,9 @@ if __name__ == "__main__":
             try:
                 if command == "SCAN":
                     print_scan_report(link)
+                elif command == "RAW":
+                    # Verbose rows are opt-in; automated RAW sampling stays compact.
+                    print(format_frame(link.request("RAW TRACE")), flush=True)
                 else:
                     is_motion = command.split()[0] in {"MOVE", "GOTO", "JOG"}
                     print(format_frame(link.request(command, timeout=30 if is_motion else 2,

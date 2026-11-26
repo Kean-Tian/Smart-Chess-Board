@@ -80,7 +80,7 @@ bool scb_core_init(ScbCore *c, ScbIo io, int64_t now) {
     c->row_ready_at = now + SCB_SCAN_SETTLE_US;
     c->frame_started_at = now;
     if (!io.show_leds(io.ctx, &c->leds)) return false;
-    emit(c, "HELLO SCB_MASTER_PCB_V2_S3 1");
+    emit(c, "HELLO SCB_MASTER_PCB_V3_S3 1");
     return true;
 }
 
@@ -95,31 +95,52 @@ static uint64_t occupancy_bits(const bool map[64]) {
 static void board_report(ScbCore *c, bool raw) {
     uint64_t bits = occupancy_bits(raw ? c->raw_frame : c->stable);
     emit(c, "%s %016llX", raw ? "RAW" : "BOARD", (unsigned long long)bits);
-    if (!raw) c->sensor_trace_pending = bits != 0;
+    if (!raw) {
+        /* Include vacated rows, including removal of the last magnet. Keep rows
+         * pending through coalescing so a later change cannot hide the update.
+         */
+        uint64_t relevant = bits | (bits ^ c->sensor_reported_bits);
+        c->sensor_reported_bits = bits;
+        for (unsigned row = 0; row < 8; ++row) {
+            unsigned rank = SCB_SENSOR_REVERSE_ROWS ? 7U - row : row;
+            if ((relevant >> (rank * 8U)) & 0xffU)
+                c->sensor_trace_rows |= (uint8_t)(1U << row);
+        }
+        c->sensor_trace_pending = c->sensor_trace_rows != 0;
+    }
+}
+
+/* Report one captured row; do not mix a partial new scan with a completed frame. */
+static void sensor_row_report(ScbCore *c, const char *kind, unsigned row,
+                              uint8_t captured, uint64_t bits, unsigned frame) {
+    char inputs[9];
+    for (unsigned col = 0; col < 8; ++col)
+        inputs[col] = (captured & (1U << col)) ? '1' : '0';
+    inputs[8] = '\0';
+    emit(c, "%s frame=%u mux=%u%u%u A0=%u:%u A1=%u:%u A2=%u:%u inputs=%s occupy=%016llX polarity=%s",
+         kind, frame, (row >> 2) & 1U, (row >> 1) & 1U, row & 1U,
+         address[0], row & 1U, address[1], (row >> 1) & 1U,
+         address[2], (row >> 2) & 1U, inputs, (unsigned long long)bits,
+         c->active_low ? "LOW" : "HIGH");
 }
 
 /* Report captured MUX/input data from the accepted frame; limit automatic traces. */
 static void sensor_trace(ScbCore *c, int64_t now, bool force) {
-    if (!c->board_ready || !c->sensor_trace_pending) return;
+    if (!c->board_ready) return;
+    /* Explicit SCAN includes empty rows: all eight MUX/input combinations. */
+    if (force) c->sensor_trace_rows = 0xffU;
+    if (!c->sensor_trace_rows) return;
     if (!force && c->sensor_trace_at &&
         now - c->sensor_trace_at < SCB_SENSOR_TRACE_INTERVAL_US) return;
     uint64_t bits = occupancy_bits(c->stable);
     for (unsigned row = 0; row < 8; ++row) {
-        unsigned rank = SCB_SENSOR_REVERSE_ROWS ? 7U - row : row;
-        if (!((bits >> (rank * 8U)) & 0xffU)) continue;
-        char inputs[9];
-        for (unsigned col = 0; col < 8; ++col)
-            inputs[col] = (c->stable_inputs[row] & (1U << col)) ? '1' : '0';
-        inputs[8] = '\0';
+        if (!(c->sensor_trace_rows & (1U << row))) continue;
         /* These inputs were captured for this MUX address in the same accepted
            frame as occupy, not re-read after the scanner changed address. */
-        emit(c, "SENSOR frame=%u mux=%u%u%u A0=%u:%u A1=%u:%u A2=%u:%u inputs=%s occupy=%016llX polarity=%s",
-             c->stable_frame, (row >> 2) & 1U, (row >> 1) & 1U, row & 1U,
-             address[0], row & 1U, address[1], (row >> 1) & 1U,
-             address[2], (row >> 2) & 1U, inputs, (unsigned long long)bits,
-             c->active_low ? "LOW" : "HIGH");
+        sensor_row_report(c, "SENSOR", row, c->stable_inputs[row], bits, c->stable_frame);
     }
     c->sensor_trace_pending = false;
+    c->sensor_trace_rows = 0;
     c->sensor_trace_at = now;
 }
 
@@ -146,6 +167,7 @@ static void scan_tick(ScbCore *c, int64_t now) {
         c->last_frame_at = now;
         ++c->scan_frames;
         memcpy(c->raw_frame, c->sampled, sizeof(c->raw_frame));
+        memcpy(c->raw_inputs, c->sampled_inputs, sizeof(c->raw_inputs));
         if (!c->debounce.has_candidate ||
             memcmp(c->sampled, c->debounce.candidate, sizeof(c->sampled)))
             c->debounce_started_at = now;
@@ -161,6 +183,14 @@ static void scan_tick(ScbCore *c, int64_t now) {
                 if (scb_move_tracker_process(&c->tracker, c->stable, &ev) == 0)
                     emit(c, "EVENT %s", ev.message);
             }
+        } else if (c->board_ready &&
+                   c->debounce.candidate_count >= SCB_DEBOUNCE_SCANS &&
+                   !memcmp(c->sampled, c->stable, sizeof(c->stable))) {
+            /* An unchanged confirmed board is still a newly observed frame.
+             * Refresh diagnostics without emitting duplicate moves or BOARD events.
+             */
+            memcpy(c->stable_inputs, c->sampled_inputs, sizeof(c->stable_inputs));
+            c->stable_frame = c->scan_frames;
         }
         if (!c->moving && c->ignore_frames) {
             --c->ignore_frames;
@@ -302,11 +332,18 @@ static void command(ScbCore *c, char *line, int64_t now) {
              s.led_last_us, s.led_max_us, s.led_late, s.led_failed, s.heap_free, s.heap_min);
         return;
     }
-    if ((!strcmp(cmd, "SCAN") || !strcmp(cmd, "RAW")) && n == 1) {
-        if (!c->board_ready) { reply(c, "ERR", id, "NOT_READY"); return; }
+    if ((!strcmp(cmd, "SCAN") && n == 1) ||
+        (!strcmp(cmd, "RAW") && (n == 1 || (n == 2 && !strcmp(args[1], "TRACE"))))) {
         bool raw = !strcmp(cmd, "RAW");
+        if (raw ? !c->scan_frames : !c->board_ready) {
+            reply(c, "ERR", id, "NOT_READY"); return;
+        }
         board_report(c, raw);
-        if (!raw) sensor_trace(c, now, true);
+        if (raw && n == 2) {
+            uint64_t bits = occupancy_bits(c->raw_frame);
+            for (unsigned row = 0; row < 8; ++row)
+                sensor_row_report(c, "SENSOR_RAW", row, c->raw_inputs[row], bits, c->scan_frames);
+        } else if (!raw) sensor_trace(c, now, true);
         reply(c, "ACK", id, cmd); return;
     }
     if (!strcmp(cmd, "ARM") && n == 1) {
@@ -334,6 +371,7 @@ static void command(ScbCore *c, char *line, int64_t now) {
         scb_debouncer_initialize(&c->debounce, SCB_DEBOUNCE_SCANS);
         scb_move_tracker_initialize(&c->tracker); c->board_ready = false; c->row = 0;
         c->sensor_trace_pending = false; c->sensor_trace_at = 0;
+        c->sensor_trace_rows = 0; c->sensor_reported_bits = 0;
         if (!set_row(c, 0)) { scb_core_fault(c, "GPIO"); return; }
         c->row_ready_at = now + SCB_SCAN_SETTLE_US;
         c->frame_started_at = now;

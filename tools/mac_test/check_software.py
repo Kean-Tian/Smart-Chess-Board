@@ -39,7 +39,7 @@ def main():
                        "final_fen": game.fen(), "test_suites_passed": 10,
                        "test_platform": platform.platform(),
                        "pi_or_esp32_hardware_tested": False,
-                       "mcu_test_target": "SCB Master PCB V2 ESP32-S3",
+                       "mcu_test_target": "SCB Master PCB V3 ESP32-S3",
                        "mcu_gpio_backend": "simulated; no physical GPIO or serial port opened"})
     report = ROOT / "tools" / "mac_test" / "latest_result.json"
     report.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

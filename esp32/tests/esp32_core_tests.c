@@ -100,8 +100,8 @@ static void test_sensor_traces_use_the_accepted_frame(void) {
     f.board[7] = f.board[16] = true; /* h1 and a3. */
     ticks(&c, 1, 33);
     assert(c.row != 0); /* The scanner has already switched away from row 0. */
-    contains(&f, "SENSOR frame=2 mux=000 A0=6:0 A1=5:0 A2=4:0 inputs=00000001 occupy=0000000000010080 polarity=HIGH\n");
-    contains(&f, "mux=010 A0=6:0 A1=5:1 A2=4:0 inputs=10000000 occupy=0000000000010080 polarity=HIGH\n");
+    contains(&f, "SENSOR frame=2 mux=000 A0=10:0 A1=9:0 A2=8:0 inputs=00000001 occupy=0000000000010080 polarity=HIGH\n");
+    contains(&f, "mux=010 A0=10:0 A1=9:1 A2=8:0 inputs=10000000 occupy=0000000000010080 polarity=HIGH\n");
     assert(sensor_lines(&f) == 2); /* Only occupied rows are reported. */
 
     f.used = 0; f.output[0] = '\0';
@@ -109,25 +109,34 @@ static void test_sensor_traces_use_the_accepted_frame(void) {
     ticks(&c, 33001, 40);
     assert(c.sensor_trace_pending && sensor_lines(&f) == 0);
     ticks(&c, 73001, 160);
-    assert(!c.sensor_trace_pending && sensor_lines(&f) == 2);
-    contains(&f, "mux=111 A0=6:1 A1=5:1 A2=4:1 inputs=00000001 occupy=8000000000010000 polarity=HIGH\n");
+    assert(!c.sensor_trace_pending && sensor_lines(&f) == 3);
+    contains(&f, "mux=000 A0=10:0 A1=9:0 A2=8:0 inputs=00000000 occupy=8000000000010000 polarity=HIGH\n");
+    contains(&f, "mux=111 A0=10:1 A1=9:1 A2=8:1 inputs=00000001 occupy=8000000000010000 polarity=HIGH\n");
 
     f.used = 0; f.output[0] = '\0';
     cmd(&c, "@55 SCAN\n", 233500);
-    assert(sensor_lines(&f) == 2); /* Explicit SCAN bypasses rate limiting. */
+    assert(sensor_lines(&f) == 8); /* SCAN includes all rows and bypasses rate limiting. */
     contains(&f, "BOARD 8000000000010000\n");
     contains(&f, "ACK 55 SCAN\n");
 
     f.used = 0; f.output[0] = '\0';
     memset(f.board, 0, sizeof(f.board));
     ticks(&c, 233001, 40);
-    assert(sensor_lines(&f) == 0 && !c.sensor_trace_pending);
+    assert(sensor_lines(&f) == 0 && c.sensor_trace_pending);
     contains(&f, "BOARD 0000000000000000\n");
+    ticks(&c, 273001, 180);
+    assert(sensor_lines(&f) == 2 && !c.sensor_trace_pending);
+    contains(&f, "mux=111 A0=10:1 A1=9:1 A2=8:1 inputs=00000000 occupy=0000000000000000 polarity=HIGH\n");
+
+    f.used = 0; f.output[0] = '\0';
+    cmd(&c, "@56 SCAN\n", 454000);
+    assert(sensor_lines(&f) == 8); /* Empty board still has eight raw input rows. */
+    contains(&f, "mux=000 A0=10:0 A1=9:0 A2=8:0 inputs=00000000 occupy=0000000000000000 polarity=HIGH\n");
 
     f.used = 0; f.output[0] = '\0';
     f.board[0] = true;
-    cmd(&c, "POLARITY LOW\n", 274000);
-    ticks(&c, 274000, 30);
+    cmd(&c, "POLARITY LOW\n", 455000);
+    ticks(&c, 455000, 30);
     contains(&f, "inputs=10000000 occupy=FFFFFFFFFFFFFFFE polarity=LOW\n");
     assert(sensor_lines(&f) == 8);
     const char *start = f.output, *end;
@@ -138,7 +147,7 @@ static void test_sensor_traces_use_the_accepted_frame(void) {
 }
 static void test_protocol(void) {
     ScbCore c; Fake f; init(&c, &f);
-    contains(&f, "HELLO SCB_MASTER_PCB_V2_S3 1\n");
+    contains(&f, "HELLO SCB_MASTER_PCB_V3_S3 1\n");
     cmd(&c, "@6 STATUS\n", 50); contains(&f, "polarity=HIGH fault=NONE\n");
     cmd(&c, "@7 PI", 100); cmd(&c, "NG\r\n", 200); contains(&f, "ACK 7 PING\n");
     cmd(&c, "@8 LED a1 20 0 0\n", 300); assert(c.leds.pixels[0].red == 20);
@@ -168,6 +177,39 @@ static void test_live_inputs_do_not_drive_sensor_outputs(void) {
     assert(!memcmp(pins_before, f.pins, sizeof(pins_before)));
     assert(!c.armed && !c.moving && !c.magnet);
     assert(!c.board_ready); /* No frame/debounce needed for live electrical inputs. */
+}
+static void test_fresh_raw_diagnostics_and_unchanged_stable_frames(void) {
+    ScbCore c; Fake f; init(&c, &f);
+    ticks(&c, 1, 10);
+    assert(c.scan_frames == 1 && !c.board_ready);
+    cmd(&c, "@60 RAW TRACE\n", 10002); /* RAW works before debounce first confirms. */
+    contains(&f, "SENSOR_RAW frame=1 mux=000 A0=10:0 A1=9:0 A2=8:0 inputs=00000000 occupy=0000000000000000 polarity=HIGH\n");
+    contains(&f, "ACK 60 RAW\n");
+    f.used = 0; f.output[0] = '\0';
+    cmd(&c, "@63 RAW\n", 10003);
+    contains(&f, "RAW 0000000000000000\n");
+    assert(!strstr(f.output, "SENSOR_RAW")); /* Automated sampling is not flooded. */
+    ticks(&c, 10001, 20);
+    assert(c.board_ready && c.stable_frame == c.scan_frames && c.scan_frames == 3);
+    size_t used = f.used;
+    ticks(&c, 30001, 20);
+    assert(c.stable_frame == 5 && f.used == used); /* Fresh observation, no duplicate events. */
+
+    f.board[0] = true;
+    ticks(&c, 50001, 10);
+    assert(c.scan_frames == 6 && c.stable_frame == 5 && !c.stable[0]);
+    assert(c.raw_frame[0]); /* A changed, unconfirmed input is visible separately. */
+    f.used = 0; f.output[0] = '\0';
+    cmd(&c, "@61 RAW TRACE\n", 60002);
+    contains(&f, "RAW 0000000000000001\n");
+    contains(&f, "SENSOR_RAW frame=6 mux=000 A0=10:0 A1=9:0 A2=8:0 inputs=10000000 occupy=0000000000000001 polarity=HIGH\n");
+
+    f.board[0] = false;
+    ticks(&c, 60001, 2); /* Row0 of the next, incomplete scan has changed again. */
+    assert(c.sampled_inputs[0] == 0 && c.raw_inputs[0] == 1);
+    f.used = 0; f.output[0] = '\0';
+    cmd(&c, "@62 RAW TRACE\n", 62002);
+    contains(&f, "SENSOR_RAW frame=6 mux=000 A0=10:0 A1=9:0 A2=8:0 inputs=10000000 occupy=0000000000000001 polarity=HIGH\n");
 }
 static void arm(ScbCore *c) { cmd(c, "PING\nARM\nSET_STEPS 3\nORIGIN a1\n", 1000); assert(c->armed && c->origin_valid); }
 static void test_motion(void) {
@@ -244,20 +286,17 @@ static void test_spec_timing_and_power_defaults(void) {
     }
     assert(c.scan_frames >= 19 && c.scan_misses == 0);
     const unsigned columns[] = SCB_COLUMN_PINS;
-    const unsigned expected_columns[] = {13,14,10,9,11,12,8,7};
+    const unsigned expected_columns[] = {13,14,4,5,11,12,6,7};
     assert(!memcmp(columns, expected_columns, sizeof(columns)));
-    assert(SCB_PIN_ROW_A0 == 6 && SCB_PIN_ROW_A1 == 5 && SCB_PIN_ROW_A2 == 4);
-    assert(SCB_PIN_UART_TX == 18 && SCB_PIN_UART_RX == 17);
-    assert(SCB_PIN_LED == 2 && SCB_PIN_MAGNET == 33 && SCB_PIN_MOTOR_EN == 38);
-#if defined(CONFIG_SCB_MOTOR_PCB_ROUTING) && CONFIG_SCB_MOTOR_PCB_ROUTING
+    assert(SCB_PIN_ROW_A0 == 10 && SCB_PIN_ROW_A1 == 9 && SCB_PIN_ROW_A2 == 8);
+    assert(SCB_PIN_UART_TX == 17 && SCB_PIN_UART_RX == 18);
+    assert(SCB_PIN_LED == 21 && SCB_PIN_MAGNET == 33 && SCB_PIN_MOTOR_EN == 38);
     assert(SCB_PIN_X_STEP == 35 && SCB_PIN_X_DIR == 34);
     assert(SCB_PIN_Y_STEP == 37 && SCB_PIN_Y_DIR == 36);
-#else
-    assert(SCB_PIN_X_STEP == 34 && SCB_PIN_X_DIR == 35);
-    assert(SCB_PIN_Y_STEP == 36 && SCB_PIN_Y_DIR == 37);
-#endif
+    assert(SCB_PIN_PCB_TEST == 46);
+
     const unsigned pins[] = {SCB_PIN_LED, SCB_PIN_ROW_A0, SCB_PIN_ROW_A1, SCB_PIN_ROW_A2,
-        13,14,10,9,11,12,8,7,SCB_PIN_UART_TX,SCB_PIN_UART_RX,SCB_PIN_MAGNET,
+        13,14,4,5,11,12,6,7,SCB_PIN_UART_TX,SCB_PIN_UART_RX,SCB_PIN_MAGNET,
         SCB_PIN_X_STEP,SCB_PIN_X_DIR,SCB_PIN_Y_STEP,SCB_PIN_Y_DIR,SCB_PIN_MOTOR_EN,
         SCB_PIN_USB_DM,SCB_PIN_USB_DP};
     for (unsigned i = 0; i < sizeof(pins)/sizeof(pins[0]); ++i) {
@@ -304,8 +343,9 @@ int main(void) {
     test_board(); test_scan_covers_all_64_squares();
     test_sensor_traces_use_the_accepted_frame();
     test_protocol(); test_live_inputs_do_not_drive_sensor_outputs();
+    test_fresh_raw_diagnostics_and_unchanged_stable_frames();
     test_motion(); test_watchdogs(); test_ambiguous_and_led_mapping();
     test_spec_timing_and_power_defaults();
     test_fresh_snapshot_fault_latch_and_guidance();
-    puts("ESP32-S3 PCB V2 portable-core tests passed (simulated GPIO): sensing, framing, outputs, motion, watchdogs.");
+    puts("ESP32-S3 PCB V3 portable-core tests passed (simulated GPIO): sensing, framing, outputs, motion, watchdogs.");
 }

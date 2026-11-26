@@ -14,6 +14,7 @@ typedef enum {
 
 void scb_ui_init(const char *database_path);
 void scb_ui_shutdown(void);
+bool scb_ui_quit_requested(void);
 void scb_ui_show(UiScreen screen);
 void scb_ui_text_input(const char *value);
 void scb_ui_backspace(void);

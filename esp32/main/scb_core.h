@@ -27,9 +27,11 @@ typedef struct {
     ScbMoveTracker tracker;
     ScbLedGrid leds;
     bool sampled[64], raw_frame[64], stable[64], board_ready, active_low;
-    uint8_t sampled_inputs[8], stable_inputs[8];
+    uint8_t sampled_inputs[8], raw_inputs[8], stable_inputs[8];
     unsigned stable_frame;
     bool sensor_trace_pending;
+    uint8_t sensor_trace_rows; /* Occupied or changed physical MUX rows awaiting a trace. */
+    uint64_t sensor_reported_bits;
     int64_t sensor_trace_at;
     unsigned row;
     int64_t row_ready_at;

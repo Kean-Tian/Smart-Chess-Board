@@ -1,6 +1,6 @@
 # Software Specification Alignment
 
-This change applies the Team 24 requirements supplied on 2026-10-29 to software configuration, scheduling, diagnostics, and tests. A configured target or simulated result is not a hardware measurement. Current hardware mapping is [SCB Master PCB V2](PCB_Connection_Map.md); earlier S2 measurements below are historical.
+This change applies the Team 24 requirements supplied on 2026-10-29 to software configuration, scheduling, diagnostics, and tests. A configured target or simulated result is not a hardware measurement. Current hardware mapping is [SCB Master PCB V3](PCB_Connection_Map.md); earlier S2 measurements below are historical.
 
 ## Requirements and Verification Scope
 
@@ -11,7 +11,7 @@ This change applies the Team 24 requirements supplied on 2026-10-29 to software 
 | Debounce within milliseconds | Two consecutive identical complete frames. Acceptance is 10 ms after the first matching candidate observation at the nominal schedule; physical detection typically needs up to about 20–30 ms depending on row phase. | Simulated stable inputs. Noise, sensor startup, polarity, and orientation require hardware tests. |
 | LED/visual feedback <100 ms | Queue-based LED updates, separate RMT worker, 5 ms Pi event polling, background engine search, and 80 ms LED-command ACK timeout. | LED queue-to-RMT-completion timing is reported by PLATFORM. This does not measure the complete physical-event-to-light path or a TFT GUI. |
 | SRAM about 264–520 KB for search | Stockfish runs in Pi DRAM, not MCU SRAM. Its default Hash is 16 MiB; its total process memory is larger. The firmware has no search/transposition table. A separate conservative 264 KiB ceiling checks static MCU DRAM/IRAM/RTC allocation at ESP-IDF link time. | Build-time static accounting and runtime free/minimum internal heap reporting. The original search-SRAM wording conflicts with this architecture and needs clarification in the report. |
-| GPIO capacity 22–25 minimum | The custom S3 PCB uses the verified GPIO map, native USB19/20 and optional UART18/17. No extra pins are assigned merely to raise the count. | Pin uniqueness, external-Flash/USB reservations and straight-IDC connector order are checked against KiCad exports. Additional switches require confirmed PCB connections. |
+| GPIO capacity 22–25 minimum | The custom S3 PCB uses the verified GPIO map, native USB19/20 and optional UART17/18. No extra pins are assigned merely to raise the count. | Pin uniqueness, external-Flash/USB reservations and straight-IDC connector order are checked against KiCad exports. Additional switches require confirmed PCB connections. |
 | Maximum 25 W, typical 10 W | Default engine threads reduced to 1, Hash reduced to 16 MiB, Ponder remains off, and LED channels are capped at 32/255. Motor/magnet stop behavior is retained. | Resource controls only; whole-system power has not been measured or guaranteed. |
 | Ambient operation 10–35 C | Component, enclosure, and environmental qualification. | Not established by software tests. |
 | Enclosure surface <45 C | Requires enclosure temperature measurements and thermal design; chip temperature would not substitute for enclosure temperature. | No connected enclosure sensor; no fabricated software temperature protection. |
@@ -41,7 +41,7 @@ The report intentionally separates MCU software timings from optical feedback, r
 
 ## Firmware and Safety Boundaries
 
-The current MCU target is the bare ESP32-S3 on SCB Master PCB V2, using the straight-IDC16 map documented in PCB_Connection_Map.md. Row-settling time, polarity defaults, calibration requirements, and protection timeouts are retained. No undocumented homing or temperature inputs are assigned. Automatic homing, collision avoidance and reliable automatic captures remain unverified. The existing touchscreen UI is retained.
+The current MCU target is the bare ESP32-S3 on SCB Master PCB V3, using the straight-IDC16 map documented in PCB_Connection_Map.md. Row-settling time, polarity defaults, calibration requirements, and protection timeouts are retained. No undocumented homing or temperature inputs are assigned. Automatic homing, collision avoidance and reliable automatic captures remain unverified. The existing touchscreen UI is retained.
 
 The ESP-IDF post-link RAM check includes static internal data, instruction RAM, and RTC allocations, excluding flash sections and linker padding. It does not include later dynamic task/driver allocations. Inspect PLATFORM heap/min_heap on hardware under sustained load. The native ESP-IDF CMake target runs the RAM check after linking. The release manifest records current measured static allocation.
 
@@ -49,9 +49,9 @@ The ESP32-S3 has two CPU cores. The control task (priority 10) is pinned to core
 
 An asynchronous RMT output failure is counted and reported as `FAULT LED_OUTPUT` by the control task, which also disables motion and releases the electromagnet.
 
-## Current PCB V2 Sensor Mapping and Verification
+## Current PCB V3 Sensor Mapping and Verification
 
-With a straight cable, sensor A0/A1/A2 use GPIO6/5/4 and sensor DIG_OUT1..8 use GPIO13/14/10/9/11/12/8/7. External LED data uses GPIO2 through the level shifter. Native USB uses GPIO19/20; optional application UART1 uses GPIO18/17. Motor STEP/DIR have separately documented schematic and PCB variants.
+With a straight cable, sensor A0/A1/A2 use GPIO10/9/8 and sensor DIG_OUT1..8 use GPIO13/14/4/5/11/12/6/7. External LED data uses GPIO21 through the level shifter. Native USB uses GPIO19/20; optional application UART1 uses GPIO17/18. Motor STEP/DIR agree between the latest schematic and PCB.
 
 Default occupancy remains HIGH following earlier S2 testing; verify magnet polarity again on the custom PCB. The raw captured input, MUX address and stable occupancy are reported together. Human-readable square names replace hexadecimal masks in the Python terminal only; the wire representation is unchanged. Automatic sensor diagnostics are limited to five snapshots/second without changing the nominal 100 Hz scan schedule.
 

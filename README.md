@@ -1,6 +1,6 @@
 # Smart Chess Board
 
-Team 24. The SCB Master PCB V2 (ESP32-S3) controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
+Team 24. The SCB Master PCB V3 (ESP32-S3) controls the chessboard hardware; the Raspberry Pi 5 runs the chess rules, Stockfish, and application software.
 
 ## Git LFS Setup
 
@@ -37,7 +37,7 @@ SCB/
 │   ├── tests/
 │   ├── setup.sh               Initial setup on the Pi
 │   └── start.sh               Startup on the Pi
-├── esp32/                     Standalone ESP-IDF firmware project for SCB Master PCB V2 (ESP32-S3)
+├── esp32/                     Standalone ESP-IDF firmware project for SCB Master PCB V3 (ESP32-S3)
 │   ├── main/                  GPIO configuration, control logic, and platform drivers
 │   ├── components/board_logic/  Debouncing, move events, and LED square mapping
 │   ├── tests/                 Control-logic tests without hardware
@@ -110,9 +110,9 @@ This entry point builds only the Pi rules library and host tests. Cross-compile 
 
 ## Current Validation Scope and Limitations
 
-The current target is SCB Master PCB V2, bare ESP32-S3 with external 16 MB Flash. Native USB uses GPIO19/20; optional J6 UART uses TX18/RX17. A straight IDC16 cable is compensated in firmware: sensor A0/A1/A2=GPIO6/5/4 and sensor columns=13,14,10,9,11,12,8,7. See the [connection map](docs/PCB_Connection_Map.md) and [S3 test guide](docs/ESP32_S3_Test_Guide.md).
+The current target is SCB Master PCB V3, bare ESP32-S3 with external 16 MB Flash. Native USB uses GPIO19/20; optional J6 UART uses TX17/RX18. A straight IDC16 cable is compensated in firmware: sensor A0/A1/A2=GPIO10/9/8 and sensor columns=13,14,4,5,11,12,6,7. See the [connection map](docs/PCB_Connection_Map.md) and [S3 test guide](docs/ESP32_S3_Test_Guide.md).
 
-The supplied schematic and PCB disagree on both motors' STEP/DIR pins. The user confirmed fabrication from that layout, so firmware defaults follow PCB copper: X STEP=35/DIR=34, Y STEP=37/DIR=36. Earlier S2 test results do not validate the new S3 PCB. Host tests/builds cannot establish physical sensor accuracy, LED latency, driver current or reliable automatic movement.
+The V3 schematic and PCB agree: X STEP=35/DIR=34 and Y STEP=37/DIR=36. The obsolete V2 motor-routing option has been removed. GPIO46 drives D6 HIGH after application startup for the requested PCB test; reset/boot strapping levels are not controlled by the application. Physical actuator accuracy remains unverified.
 
 Stockfish games do not require a network connection or an API key. OpenRouter games require an Internet connection and API credentials; automated cloud tests use simulated responses. Motion support remains at the bench-control stage, without automatic homing, obstacle avoidance, or complete capture-piece handling.
 

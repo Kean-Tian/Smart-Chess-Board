@@ -201,6 +201,7 @@ static int run_window(bool fullscreen, bool input_test) {
         }
         scb_ui_tick();
         lv_timer_handler();
+        if(scb_ui_quit_requested()) running = false;
         if(pixels_dirty) {
             SDL_UpdateTexture(texture, NULL, framebuffer, SCB_UI_WIDTH * 4);
             SDL_RenderClear(renderer); SDL_RenderCopy(renderer, texture, NULL, NULL); SDL_RenderPresent(renderer);

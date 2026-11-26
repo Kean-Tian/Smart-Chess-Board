@@ -1,6 +1,6 @@
 {
   "chip": "esp32s3",
-  "board": "SCB Master PCB V2 ESP32-S3",
+  "board": "SCB Master PCB V3 ESP32-S3",
   "module": "Bare ESP32-S3 + W25Q128JVS 16 MB; no PSRAM",
   "idf_version": "5.5.3",
   "use_stub": true,
@@ -13,7 +13,7 @@
       "offset": "0x0",
       "file": "bootloader.bin",
       "bytes": 13776,
-      "sha256": "5f3ca863588e55ce09318f2e64458dbf39bec3f243601c6907929b5bb83246ef"
+      "sha256": "0b2b8f232103f3b8a6e19869d99b8ebeb87007c31e41425c060bb2da558645ee"
     },
     {
       "offset": "0x8000",
@@ -24,24 +24,30 @@
     {
       "offset": "0x10000",
       "file": "firmware.bin",
-      "bytes": 229200,
-      "sha256": "0f289afeac21d41aa1cdf33e7745e96f2a099fe2aa04cafba4a15de36edf77ee"
+      "bytes": 229792,
+      "sha256": "e14d57a14c06edfe02cc89a2c812238bfe61f47de4c02bea67d89bd38a755d71"
     }
   ],
-  "build_date": "2026-11-23",
-  "static_internal_ram_bytes": 88240,
+  "build_date": "2026-11-24",
+  "static_internal_ram_bytes": 88256,
   "static_ram_limit_bytes": 270336,
   "transport": "native_usb_serial_jtag",
-  "motor_routing": "pcb_layout",
+  "motor_routing": "v3_schematic_and_pcb_agree",
+  "sensor_board": "SCBSensorPCBV2.2",
+  "pcb_test": {
+    "gpio": 46,
+    "level": "HIGH after application startup",
+    "component": "D6"
+  },
   "sensor_cable": "IDC16 pin n to pin n",
   "source_sha256": {
-    "CMakeLists.txt": "f99b48649991729d1a70e02e7f6553802629d83a572b59b856810af5d81d1343",
-    "sdkconfig.defaults": "25dd647313ed891251bf6b0a6d14d5a66825dbce0519f86efa21e059f744e6d5",
+    "CMakeLists.txt": "4743e414c45d807c903ffffa6cecea909cdea31f0112433a1e6c61408af7e946",
+    "sdkconfig.defaults": "08e07206b54e544fbf7de11d6cbe3771a13b7a211977e14655f67331e07c335a",
     "partitions.csv": "166a0614fdfef6818b84f1dec987bbfacb4ac80f036a8a3aab5be934b9f726f4",
-    "main/app_main.c": "eb1da228833ed4bf67a1e01e9f611f7a9aebd1d4f9c04b68c89d3aade91a7f2d",
-    "main/board_pins.h": "e4daf3efd1c4d0eb5657888be5da50a216c8b5bbeb74d78c864cb0d264c73dd8",
-    "main/scb_core.c": "195273bcb7ee2545c6a025eabca7b7ba097bdfc5ba51c247abcb609e38daf81d",
-    "main/scb_core.h": "fca6d4bed6c934d5cad56b09cb64017356c1a7dfc42d0f0c65b1ee284f7839f5",
+    "main/app_main.c": "a7d094a79d01b03e61bbeaa9de722d0392ea4370ed26bd3545f445ff833017f2",
+    "main/board_pins.h": "0ed682351c867edce5ca42d3cef2757fecca65e70b06755347fb3795bc507b67",
+    "main/scb_core.c": "ed6b86fd648191fce4188d48ba464bc655f429d34fb95dfe6656dca354b91550",
+    "main/scb_core.h": "b40059a6237efd566cefe60fc8208d31215cfa93b79a72455457e05c8c78ebd6",
     "main/CMakeLists.txt": "eb8c00f959d1038230604cda09740c5e9d3fe93907ac81eb9e5e06aac21f8f45",
     "components/board_logic/CMakeLists.txt": "f200bbd6bc409437f07c9bd8a642b5d69ba898643c34cf2f906739cc2068c276",
     "components/board_logic/include/scb/led_grid.h": "5b8c9cbf69c94036027f33370b82395cc66e1fb72ecc0e138caa47498ecbbbb6",
@@ -49,9 +55,9 @@
     "components/board_logic/src/led_grid.c": "e4730cf440a27d2a0df91f2b279eb70679190ba7906539a888a780225001a01e",
     "components/board_logic/src/sensor_matrix.c": "058d1a51ebab07597427948e1d5867f93eb4ee0b2cb056b9fdce0654a19d6ec9",
     "components/scb_transport/include/scb_transport.h": "da0a8bf3ef7d5680fcea7c02b317eca3f1b5bf5582ad992086a202a581d1b7d6",
-    "components/scb_transport/scb_transport.c": "51bb9c0aa822c17d2aec0522db06455aaed4e7ccb3893b5c04ad5cd443a24006",
-    "components/board_logic/Kconfig.projbuild": "ea64e34b0e1334075cd6aa769d20b312541f52d5889b6cc19dd3b7a9358d4ba4",
-    "components/scb_transport/Kconfig.projbuild": "cc54c7609d56770ef68314c342452bde5e4b8d3e95d9dc9d147d89cddf41c255",
+    "components/scb_transport/scb_transport.c": "3456bceba3b7434e33b27727eb7c501e265324ade3503573d18647d1673c0df9",
+    "components/board_logic/Kconfig.projbuild": "efe5c83f9e8bd5468b9f7d16cf9194a2210fcb876e83ef7f61c5b458c495465c",
+    "components/scb_transport/Kconfig.projbuild": "824046aa8b05e9b10576b85807c94652853b636244d1e5a0cecfcac13d48f61e",
     "components/scb_transport/CMakeLists.txt": "f9b97f7fbffe786d42d9a591b3d835d0039404c5e0a2e414e3bfe2854bda3b5c"
   }
 }

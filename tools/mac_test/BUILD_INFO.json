@@ -4,14 +4,14 @@
   "official_mac_download": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-macos-universal.tar.gz",
   "official_archive_sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77",
   "sha256": {
-    "esp32_core_tests": "09778761b4b9057cc6b45e275e6a56c98e0138b5a826590842746d282f46e7ff",
+    "esp32_core_tests": "1d649027ee713a18ad19e910d16ab6785815a99cf550549c4bbe2d7417a501e7",
     "libchess_adapter_tests": "afce492064da5c08f4a8752409fcec1ce4a62dc2bce54f92b6e52532c29abc7f",
     "libscb_rules.dylib": "35af550ac52010279124565b9c4abe3dd42a463ceed42267a1d249934c4351d8",
     "stockfish-macos-universal": "8eed61129d1493c5d1f2fd9323f0c54c47ac49319911fbde18c6b9c87e8b13c5"
   },
-  "updated": "2026-11-23",
+  "updated": "2026-11-24",
   "test_suites": 10,
-  "mcu_test_target": "SCB Master PCB V2 ESP32-S3",
+  "mcu_test_target": "SCB Master PCB V3 ESP32-S3 + Sensor PCB V2.2",
   "mcu_gpio_backend": "simulated",
   "hardware_tested_by_mac_launcher": false
 }

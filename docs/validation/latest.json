@@ -1,28 +1,28 @@
 {
-  "date": "2026-11-23",
-  "mcu_board": "SCB Master PCB V2",
+  "date": "2026-11-24",
+  "mcu_board": "SCB Master PCB V3",
   "mcu_chip": "esp32s3",
   "mcu_module": "Bare ESP32-S3 + W25Q128JVS external 16 MB Flash; no PSRAM",
-  "transport": "Native USB Serial/JTAG, J5 GPIO19 D- / GPIO20 D+; VBUS unconnected",
-  "alternative_transport": "J6 UART1: GPIO18 TX, GPIO17 RX, 115200 8N1; not ROM UART0",
+  "transport": "Native USB Serial/JTAG, J5 GPIO19 D- / GPIO20 D+; VBUS serves ESD protection and C31, not PCB power",
+  "alternative_transport": "J6 UART1: GPIO17 TX, GPIO18 RX, 115200 8N1; not ROM UART0",
   "cpu": "dual-core 240 MHz; control task pinned to core 1",
   "gpio": {
     "mux_A0_A1_A2": [
-      6,
-      5,
-      4
+      10,
+      9,
+      8
     ],
     "sensor_DIG_OUT1_to_8": [
       13,
       14,
-      10,
-      9,
+      4,
+      5,
       11,
       12,
-      8,
+      6,
       7
     ],
-    "external_rgb": 2,
+    "external_rgb": 21,
     "magnet": 33,
     "X_STEP_DIR": [
       35,
@@ -33,11 +33,16 @@
       36
     ],
     "motor_enable": 38,
-    "occupied_level": "HIGH initial default; physical polarity must be verified"
+    "occupied_level": "HIGH initial default; physical polarity must be verified",
+    "pcb_test_gpio46": "HIGH after application startup, D6/R17; not physically verified",
+    "uart_TX_RX": [
+      17,
+      18
+    ]
   },
-  "cable": "Straight IDC16 pin n to pin n; firmware remaps different master/sensor labels",
-  "motor_routing": "User confirmed fabrication from supplied PCB; default PCB routing enabled. Schematic disagrees on four motor pad nets.",
-  "schematic_and_pcb_evidence": "../../hardware/pcb_v2/connections.json",
+  "cable": "Straight IDC16 pin n to pin n; MUX_IN1/3 labels reversed between boards, handled in firmware; DIG_OUT labels agree",
+  "motor_routing": "V3 schematic and PCB agree: X STEP35/DIR34, Y STEP37/DIR36",
+  "schematic_and_pcb_evidence": "../../hardware/pcb_v3/connections.json",
   "host_ctest": {
     "passed": 15,
     "total": 15,
@@ -53,9 +58,9 @@
     "passed": true,
     "idf_version": "5.5.3",
     "chip": "esp32s3",
-    "static_internal_ram_bytes": 88240,
-    "firmware_sha256": "0f289afeac21d41aa1cdf33e7745e96f2a099fe2aa04cafba4a15de36edf77ee",
-    "motor_routing": "pcb_layout",
+    "static_internal_ram_bytes": 88256,
+    "firmware_sha256": "e14d57a14c06edfe02cc89a2c812238bfe61f47de4c02bea67d89bd38a755d71",
+    "motor_routing": "v3_schematic_and_pcb_agree",
     "flash_dry_run": "passed; no serial port opened",
     "flashed_in_this_update": false,
     "hardware_tested": false
@@ -74,13 +79,14 @@
     "Motor direction, driver current, carriage calibration and piece transport",
     "External power and thermal behavior"
   ],
-  "previous_validation": "history/Pre_PCB_V2_20261123.json",
+  "previous_validation": "history/Pre_PCB_V3_20261124.json",
   "additional_s3_target_builds": {
-    "wired_uart1": "passed",
-    "pcb_motor_routing": "passed",
+    "native_usb_full": "passed",
+    "wired_uart1_full": "passed",
     "bench_corexy_s3": "passed",
     "bench_mux_low": "passed",
     "bench_a0_high": "passed",
+    "gpio46_only": "passed, separate from full release",
     "physical_hardware_used": false
   },
   "mac_entry_real_engine": {
@@ -89,5 +95,26 @@
     "real_stockfish_plies": 12,
     "network_used": false,
     "physical_hardware_used": false
+  },
+  "sensor_board": "SCBSensorPCBV2.2",
+  "pcb_netlist_checks": {
+    "MCU_and_connectors_schematic_pcb_mismatches": 0,
+    "hall_paths_verified": 64,
+    "led_chain_verified": 64,
+    "mapping_tests_passed": 4
+  },
+  "sensor_terminal_debug": {
+    "automatic": "occupied and changed MUX rows, including last-magnet removal",
+    "scan": "all 8 rows from latest accepted snapshot, including empty rows",
+    "inputs": "captured DIG_OUT1..8 electrical levels; V3 GPIO13,14,4,5,11,12,6,7",
+    "occupancy": "readable logical coordinates or Empty",
+    "snapshot_throttle_us": 200000,
+    "mcu_host_tests": "passed including removal/empty board/SCAN/polarity",
+    "terminal_tests": "9 passed; event refresh without keyboard input",
+    "ctest": "15/15 passed",
+    "physical_hardware_tested": false,
+    "raw_diagnostics": "Interactive RAW requests RAW TRACE: 8 SENSOR_RAW rows captured with latest complete raw frame; compact RAW preserved for automated sampling",
+    "unchanged_stable_frame": "Refreshed on each reconfirmed complete scan, no duplicate move events",
+    "tests": "15 CTest suites, portable-core sanitizer and 11 serial/terminal tests passed; no hardware verification"
   }
 }

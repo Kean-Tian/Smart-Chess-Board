@@ -10,7 +10,7 @@
 #include <string.h>
 
 #if !CONFIG_IDF_TARGET_ESP32S3
-#error "This test harness is for SCB Master PCB V2 ESP32-S3, not the final S3 PCB."
+#error "This test harness is for SCB Master PCB V3 ESP32-S3, not the final S3 PCB."
 #endif
 #define CHECK_OUTPUT(pin) _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(pin), "Invalid S3 GPIO: " #pin)
 CHECK_OUTPUT(SCB_BENCH_A_STEP);

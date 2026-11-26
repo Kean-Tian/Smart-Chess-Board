@@ -13,3 +13,5 @@ Personal KiCad session files, automatic backups, and caches are excluded from th
 ## Current V2 firmware evidence
 
 [pcb_v2/connections.json](pcb_v2/connections.json) records the user-supplied V2 schematic/PCB hashes, GPIO nets, connector pins, LED chain and the four motor STEP/DIR discrepancies. Firmware defaults follow the schematic and a straight IDC16 cable. See the [connection map](../docs/PCB_Connection_Map.md) before using a fabricated PCB. Older hardware artifacts remain references, not the current firmware pin source.
+
+Current target: Master V3 + Sensor V2.2, evidence in [pcb_v3/connections.json](pcb_v3/connections.json). The pcb_v2 directory is historical; current schematic and PCB motor nets agree. GPIO46 drives D6 HIGH after application startup.

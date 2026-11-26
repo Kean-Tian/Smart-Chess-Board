@@ -4,6 +4,15 @@
   "screens": {
     "home": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "new-game",
         "target": "setup",
         "x": 32,
@@ -51,6 +60,15 @@
     ],
     "setup": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "home",
         "x": 32,
@@ -88,6 +106,15 @@
       }
     ],
     "profiles": [
+      {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
       {
         "id": "back",
         "target": "home",
@@ -127,6 +154,15 @@
     ],
     "history": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "home",
         "x": 32,
@@ -137,6 +173,15 @@
       }
     ],
     "player-editor": [
+      {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
       {
         "id": "back",
         "target": "profiles",
@@ -158,6 +203,15 @@
     ],
     "board-setup": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "setup",
         "x": 32,
@@ -177,6 +231,15 @@
       }
     ],
     "game": [
+      {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
       {
         "id": "back",
         "target": "home",
@@ -216,6 +279,15 @@
     ],
     "review": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "history",
         "x": 32,
@@ -226,6 +298,15 @@
       }
     ],
     "move-editor": [
+      {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
       {
         "id": "back",
         "target": "game",
@@ -256,6 +337,15 @@
     ],
     "diagnostics": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "home",
         "x": 32,
@@ -276,6 +366,15 @@
     ],
     "instructions": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "game",
         "x": 32,
@@ -287,6 +386,15 @@
     ],
     "coaching": [
       {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
+      {
         "id": "back",
         "target": "game",
         "x": 32,
@@ -297,6 +405,15 @@
       }
     ],
     "setup-computer": [
+      {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
       {
         "id": "back",
         "target": "home",
@@ -335,6 +452,15 @@
       }
     ],
     "setup-coach": [
+      {
+        "id": "quit-game",
+        "target": "desktop",
+        "x": 32,
+        "y": 16,
+        "w": 240,
+        "h": 56,
+        "disabled": false
+      },
       {
         "id": "back",
         "target": "home",

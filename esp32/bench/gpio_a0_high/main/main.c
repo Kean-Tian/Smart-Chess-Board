@@ -11,14 +11,14 @@
 #include <string.h>
 
 #if !CONFIG_IDF_TARGET_ESP32S3
-#error "This test is for SCB Master PCB V2 ESP32-S3 only."
+#error "This test is for SCB Master PCB V3 ESP32-S3 only."
 #endif
 _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_ROW_A0), "A0 must support output");
 _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_ROW_A1), "A1 must support output");
 _Static_assert(GPIO_IS_VALID_OUTPUT_GPIO(SCB_PIN_ROW_A2), "A2 must support output");
 
 /* Standalone fixed-address test using the shared board_pins.h map:
- * Sensor A0 HIGH, A1/A2 LOW (default GPIO6/5/4 = 100).
+ * Sensor A0 HIGH, A1/A2 LOW (default GPIO10/9/8 = 100).
  * No board scanning runs. Flash the main release to restore scanning.
  * ROM/reset states are outside the control of app_main.
  */

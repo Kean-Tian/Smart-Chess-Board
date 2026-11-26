@@ -5,10 +5,10 @@
 #include "freertos/task.h"
 
 #if !CONFIG_IDF_TARGET_ESP32S3
-#error "This bench firmware is for SCB Master PCB V2 ESP32-S3 only."
+#error "This bench firmware is for SCB Master PCB V3 ESP32-S3 only."
 #endif
 
-/* Fixed MUX address 000 after application startup on GPIO6/5/4. No scanning
+/* Fixed MUX address 000 after application startup on GPIO10/9/8. No scanning
  * or SCB UART tasks run. The PCB native USB uses GPIO19/20.
  * ROM boot/reset pin states are not controlled by this application.
  */

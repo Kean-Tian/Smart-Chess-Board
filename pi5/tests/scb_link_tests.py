@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 from scb_link import (ScbLink, DeviceError, Frame, parse_frame, format_frame,
-                      format_scan_timing, print_scan_report)
+                      format_scan_timing, print_scan_report, normalize_terminal_command)
 
-SENSOR_LINE = (b"SENSOR frame=2 mux=000 A0=6:0 A1=5:0 A2=4:0 "
+SENSOR_LINE = (b"SENSOR frame=2 mux=000 A0=10:0 A1=9:0 A2=8:0 "
                b"inputs=00000001 occupy=0000000000000080 polarity=HIGH\n")
 
 
@@ -42,6 +42,11 @@ class FakeSerial:
             # not a configured target or a time measured around the host call.
             self.incoming.put(b"TIMING " + request_id +
                               b" frames=30 frame_us=12345 max_us=18000 misses=2 debounce_us=9000\n")
+        elif command == b"RAW TRACE":
+            self.incoming.put(b"RAW 0000000000000001\n"
+                              b"SENSOR_RAW frame=778 mux=000 A0=10:0 A1=9:0 A2=8:0 "
+                              b"inputs=10000000 occupy=0000000000000001 polarity=HIGH\n"
+                              b"ACK " + request_id + b" RAW\n")
         else:
             # Exercise partial-frame input and unsolicited occupancy.
             self.incoming.put(b"BOARD 0000000000000080\n" + SENSOR_LINE + b"ACK ")
@@ -59,6 +64,22 @@ class FakeSerial:
 
 
 class LinkTests(unittest.TestCase):
+    def test_terminal_commands_accept_lowercase_but_reject_escape_bytes(self):
+        for text, expected in [('scan', 'SCAN'), (' ScAn\t ', 'SCAN'),
+                               ('goto e2', 'GOTO e2'), (' quit ', 'QUIT'), (' ', '')]:
+            self.assertEqual(normalize_terminal_command(text), expected)
+        for text in ['SCAN\x1b', '\x1b[A', 'SCAN\x7f', 'PING\nARM', '扫描']:
+            with self.subTest(text=repr(text)), self.assertRaises(ValueError):
+                normalize_terminal_command(text)
+
+    def test_control_characters_are_rejected_before_serial_write(self):
+        link = ScbLink.__new__(ScbLink)
+        link.serial = Mock()
+        for text in ['SCAN\x1b', 'SCAN\x7f', 'PING\nARM', 'SCAN\x00']:
+            with self.assertRaises(ValueError):
+                link._write(text, 1)
+        link.serial.write.assert_not_called()
+
     def test_frames(self):
         self.assertEqual(parse_frame("DONE 5 MOTION").request_id, 5)
         self.assertEqual(parse_frame("BOARD 0000000000000001").payload, "0000000000000001")
@@ -70,9 +91,19 @@ class LinkTests(unittest.TestCase):
         frame = parse_frame(SENSOR_LINE.decode())
         self.assertEqual((frame.kind, frame.request_id), ("SENSOR", None))
         self.assertEqual(format_frame(frame),
-                         "MUX(A2,A1,A0)=000 [GPIO6,5,4=000] | "
+                         "MUX(A2,A1,A0)=000 [GPIO10,9,8=000] | "
                          "INPUTS(DIG_OUT1..8)=00000001 | "
                          "OCCUPY=h1 | frame=2")
+        removed = parse_frame("SENSOR frame=30 mux=000 A0=10:0 A1=9:0 A2=8:0 "
+                              "inputs=00000000 occupy=0000000000000000 polarity=HIGH")
+        self.assertEqual(format_frame(removed),
+                         "MUX(A2,A1,A0)=000 [GPIO10,9,8=000] | "
+                         "INPUTS(DIG_OUT1..8)=00000000 | OCCUPY=Empty | frame=30")
+        raw = parse_frame("SENSOR_RAW frame=31 mux=000 A0=10:0 A1=9:0 A2=8:0 "
+                          "inputs=10000000 occupy=0000000000000001 polarity=HIGH")
+        self.assertEqual(format_frame(raw),
+                         "RAW (before debounce) | MUX(A2,A1,A0)=000 [GPIO10,9,8=000] | "
+                         "INPUTS(DIG_OUT1..8)=10000000 | OCCUPY=a1 | frame=31")
         malformed = parse_frame("SENSOR incomplete")
         self.assertEqual(format_frame(malformed), "Message type=SENSOR | Payload=incomplete")
         board = parse_frame("BOARD 0000000000000080")
@@ -101,7 +132,7 @@ class Port(FakeSerial):
         super().__init__()
     def open(self):
         def changed():
-            self.incoming.put(b"SENSOR frame=777 mux=001 A0=6:1 A1=5:0 A2=4:0 inputs=10000000 occupy=0000000000000100 polarity=HIGH\\n")
+            self.incoming.put(b"SENSOR frame=777 mux=001 A0=10:1 A1=9:0 A2=8:0 inputs=10000000 occupy=0000000000000100 polarity=HIGH\\n")
         timer = threading.Timer(0.9, changed)
         timer.daemon = True
         timer.start()
@@ -125,7 +156,7 @@ runpy.run_path(str(root / "pi5/app/scb_link.py"), run_name="__main__")
                         break
                     output += chunk.decode("utf-8")
             # Exercise a user-entered SCAN as well as the automatic startup scan.
-            tail, errors = process.communicate("SCAN\nquit\n", timeout=5)
+            tail, errors = process.communicate("scan\nRAW\nquit\n", timeout=5)
             output += tail
         finally:
             if process.poll() is None:
@@ -133,13 +164,16 @@ runpy.run_path(str(root / "pi5/app/scb_link.py"), run_name="__main__")
                 process.communicate()
         self.assertEqual(process.returncode, 0, errors)
         self.assertIn("MUX(A2,A1,A0)=001", output, errors)
-        self.assertIn("[GPIO6,5,4=100]", output)
+        self.assertIn("[GPIO10,9,8=100]", output)
+        self.assertIn("GPIO13,14,4,5,11,12,6,7 on PCB V3", output)
         self.assertIn("OCCUPY=a2 | frame=777", output)
         self.assertEqual(output.count("Last full-board period=12.345 ms"), 2)
         self.assertIn("Maximum period=18.000 ms", output)
         self.assertIn("Debounce confirmation=9.000 ms", output)
         self.assertRegex(output, r"SCAN round trip=\d+\.\d{3} ms")
         self.assertIn("Scan overruns=2", output)
+        self.assertIn("RAW (before debounce) | MUX", output)
+        self.assertIn("OCCUPY=a1 | frame=778", output)
 
     def test_scan_round_trip_excludes_separate_timing_request(self):
         clock = [1.0]

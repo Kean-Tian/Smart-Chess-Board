@@ -1,4 +1,4 @@
-"""Validate and flash the SCB Master PCB V2 ESP32-S3 images; never force chip mismatch."""
+"""Validate and flash the SCB Master PCB V3 ESP32-S3 images; never force chip mismatch."""
 import argparse
 import hashlib
 import json
@@ -16,9 +16,11 @@ FLASH_BYTES = 16 * 1024 * 1024
 def validate_release(directory):
     directory = Path(directory).resolve()
     manifest = json.loads((directory / 'flash_manifest.json').read_text())
+    if manifest.get('board') != 'SCB Master PCB V3 ESP32-S3':
+        raise ValueError('Expected PCB V3 full firmware; do not flash the old V2 pin map')
     if (manifest.get('chip'), manifest.get('flash_size'), manifest.get('flash_mode'),
             manifest.get('flash_freq')) != ('esp32s3', '16MB', 'dio', '40m'):
-        raise ValueError('Expected the SCB Master PCB V2 ESP32-S3 / 16 MB DIO 40 MHz release')
+        raise ValueError('Expected the SCB Master PCB V3 ESP32-S3 / 16 MB DIO 40 MHz release')
     images = manifest.get('images', [])
     expected = {'bootloader.bin': 0x0, 'partitions.bin': 0x8000, 'firmware.bin': 0x10000}
     if len(images) != len(expected) or {item['file'] for item in images} != set(expected):
