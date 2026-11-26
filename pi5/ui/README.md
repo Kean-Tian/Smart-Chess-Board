@@ -149,6 +149,8 @@ Input is hidden. The existing private `pi5/.openrouter-key` file is reused and e
 
 UI AI requests run in a separate worker, with an 8-second HTTP timeout, one attempt per request and a 10-second UI waiting limit. Failure shows an unavailable message without pausing human play or generating replacement advice. Old-position results and results disabled while pending are discarded. Changing networks may require retrying AI advice. Tests mock HTTP responses and do not charge an API account; real connectivity, credentials and model availability need verification on the Pi.
 
-## Board / Sensor Test display rotation
+## Fixed Board / Sensor Test view
 
-The diagnostic board defaults to a PCB-oriented view with a1 at the top left. Tap `View: ... CW` above the grid to cycle 0 -> 90 -> 180 -> 270 degrees clockwise. Square positions, edge labels, tap selection, occupancy colors and mismatch borders move together. The choice is kept while this application is running; restarting restores the PCB-oriented default. This affects only the diagnostic display, not firmware coordinates, LED mapping, game setup, saved positions or replay. Rotating does not disconnect USB, scan, move a piece or alter the active game.
+The diagnostic display uses the final alignment patches supplied for the Pi Terminal: fixed rotation, vertical correction and four-corner diagonal correction. The rotation control is hidden. Columns are a-h from left to right; rows are 1-8 from top to bottom. Tapping a cell shows both its PCB display coordinate and the original Sensor coordinate. Firmware masks, LED addressing and game/replay coordinates are unchanged.
+
+This version reconstructs those supplied patches; the Pi was unreachable when committing it. Software tests check the mapping, but the final physical alignment must still be verified on the Pi using all four corners and interior squares.

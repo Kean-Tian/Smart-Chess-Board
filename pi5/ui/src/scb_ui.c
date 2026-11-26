@@ -519,6 +519,11 @@ static void active_game(void) {
 }
 /* 将屏幕格子反算为原始棋盘坐标；旋转只改变显示，不修改传感器数据。 */
 static int diagnostic_square(int row, int column, int quarter_turns) {
+    /* 与最后一版 Pi Terminal 补丁保持一致：四角校正后再上下翻转。 */
+    int previous_row = row;
+    row = 7 - column;
+    column = 7 - previous_row;
+    row = 7 - row;
     int file = column, rank = row;
     for(int i = 0; i < quarter_turns; ++i) {
         int old_file = file;
@@ -528,7 +533,7 @@ static int diagnostic_square(int row, int column, int quarter_turns) {
     return rank*8+file;
 }
 static void diagnostics(void) {
-    /* 颜色、坐标标签和触摸格子一起旋转；未知数据仍显示 ?。 */
+    /* 固定实物显示方向：横轴 a-h、纵轴从上到下 1-8。 */
     shell("Board / Sensor Test", "Live occupancy only / piece types are not detected.");
     port_dropdown = lv_dropdown_create(root());
     lv_obj_set_pos(port_dropdown, 32, 270);
@@ -545,9 +550,9 @@ static void diagnostics(void) {
     lv_obj_t *rotate = button(root(), rotation, 480, 350, 208, 48, false,
                              "rotate-board", A_ROTATE_DIAGNOSTICS, 0, NULL);
     lv_obj_set_style_text_font(rotate, font(20), 0);
+    lv_obj_add_flag(rotate, LV_OBJ_FLAG_HIDDEN);
     for(int r = 0; r < 8; ++r) {
-        int left = diagnostic_square(r, 0, config.diagnostic_rotation);
-        char rank[2] = {(char)((config.diagnostic_rotation & 1) ? 'a'+left%8 : '1'+left/8), 0};
+        char rank[2] = {(char)('1'+r), 0};
         text(root(), rank, 82, 420+r*62, 24, 20, MUTED);
         for(int c = 0; c < 8; ++c) {
             int square = diagnostic_square(r, c, config.diagnostic_rotation);
@@ -557,8 +562,7 @@ static void diagnostics(void) {
         }
     }
     for(int c = 0; c < 8; ++c) {
-        int bottom = diagnostic_square(7, c, config.diagnostic_rotation);
-        char file[2] = {(char)((config.diagnostic_rotation & 1) ? '1'+bottom/8 : 'a'+bottom%8), 0};
+        char file[2] = {(char)('a'+c), 0};
         text(root(), file, 136+c*62, 908, 24, 20, MUTED);
     }
     sensor_detail = text(root(), "", 32, 950, 656, 24, INK);
@@ -902,7 +906,13 @@ static void refresh_live(void) {
             lv_obj_set_style_border_color(sensor_tiles[i], lv_color_hex(RED), 0);
         }
         int q = config.selected_square;
-        snprintf(value, sizeof(value), "%c%d: %s / %s", 'a'+q%8, q/8+1, !known ? "Unavailable" : ((mask>>q)&1) ? "Occupied" : "Empty",
+        int pcb_row = 0, pcb_col = 0;
+        for(int r = 0; r < 8; ++r)
+            for(int c = 0; c < 8; ++c)
+                if(diagnostic_square(r, c, config.diagnostic_rotation) == q) {
+                    pcb_row = r; pcb_col = c;
+                }
+        snprintf(value, sizeof(value), "PCB %c%d / Sensor %c%d: %s / %s", 'a'+pcb_col, pcb_row+1, 'a'+q%8, q/8+1, !known ? "Unavailable" : ((mask>>q)&1) ? "Occupied" : "Empty",
                  !known ? "No fresh sensor data" : compare ? mask == expected ? "Board matches" : "Red border = mismatch" : "No game position to compare");
         label_value(sensor_detail, value);
         int64_t period = ui_json_int(&bridge, bridge.state, "$.scan_timing.frame_us", -1);
@@ -1052,7 +1062,7 @@ static void click(lv_event_t *event) {
         }
         case A_SQUARE: config.selected_square = (int)hit.value; refresh_live(); break;
         case A_ROTATE_DIAGNOSTICS:
-            config.diagnostic_rotation = (config.diagnostic_rotation+1)%4;
+            /* Fixed PCB view: rotation is disabled. */
             scb_ui_show(UI_DIAGNOSTICS);
             break;
         case A_CONFIRM_COMPUTER: {
@@ -1129,7 +1139,7 @@ void scb_ui_init(const char *path) {
     editing_id = deleting_id = 0;
     memset(&config, 0, sizeof(config));
     config.minutes = 10;
-    config.diagnostic_rotation = 0; /* PCB 丝印朝上、接口在左：HE1 从左上角开始。 */
+    config.diagnostic_rotation = 3; /* Fixed final Pi Terminal view. */
     config.coach[0] = config.coach[1] = -1;
     config.pick_side = -1;
     config.review_return = UI_HISTORY;
@@ -1223,8 +1233,8 @@ static bool label_bounds(lv_obj_t *parent) {
 bool scb_ui_smoke_test(void) {
     /* The host supplies an isolated temporary database for this test. */
     if(!data_ok || player_count || selected.id) return false;
-    if(!press("diagnostics") || current != UI_DIAGNOSTICS || config.diagnostic_rotation != 0) return false;
-    const int corners[4][4] = {{0,7,56,63}, {7,63,0,56}, {63,56,7,0}, {56,0,63,7}};
+    if(!press("diagnostics") || current != UI_DIAGNOSTICS || config.diagnostic_rotation != 3) return false;
+    const int corners[4][4] = {{7,63,0,56}, {63,56,7,0}, {56,0,63,7}, {0,7,56,63}};
     for(int turn = 0; turn < 4; ++turn) {
         int rotation = config.diagnostic_rotation;
         bool seen[64] = {false};
@@ -1244,7 +1254,7 @@ bool scb_ui_smoke_test(void) {
         if(config.selected_square != corners[rotation][0] || !label_bounds(root())) return false;
         if(!press("rotate-board")) return false;
     }
-    if(config.diagnostic_rotation != 0 || !press("back") || current != UI_HOME) return false;
+    if(config.diagnostic_rotation != 3 || !press("back") || current != UI_HOME) return false;
     if(!press("new-game") || current != UI_SETUP) return false;
     if(!press("mode-computer") || config.mode != 1) return false;
     for(unsigned i = 0; i < hit_count; ++i) if(hits[i].action == A_GUIDANCE) return false;
@@ -1354,7 +1364,7 @@ bool scb_ui_service_test(void) {
         if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[28], 0)), "O") ||
            strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[12], 0)), "")) return false;
     }
-    if(config.diagnostic_rotation != 0) return false;
+    if(config.diagnostic_rotation != 3) return false;
     if(!press("back") || !press("continue-game") || current != UI_GAME || !state_flag("$.paused")) return false;
     if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "1")) return false;
     if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "0")) return false;
