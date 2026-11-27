@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "window": "led-guidance",
+  "session": "REPLACE_WITH_ACTUAL_OBSERVER_SESSION",
+  "reviewer": "REPLACE_WITH_OPERATOR_AND_TA",
+  "measurement_kind": "physical_leds",
+  "method": "REPLACE_WITH_ACTUAL_CAMERA_OR_PHOTODETECTOR_METHOD_AND_CALIBRATION",
+  "evidence_sha256": "REPLACE_WITH_ACTUAL_ATTACHED_PHYSICAL_EVIDENCE_HASH",
+  "synchronized": false,
+  "timebase": "pi_monotonic_ns",
+  "uncertainty_ns": null,
+  "observations": [
+    {
+      "role": "guidance",
+      "anchor_token": "REPLACE_WITH_ACTUAL_LIFT_EVENT_CALL_TOKEN",
+      "all_64_inspected": null,
+      "lit": null,
+      "frame_reference": "REPLACE_WITH_ACTUAL_FRAME_OR_INSTRUMENT_SAMPLE_REFERENCE",
+      "optical_lower_ns": null,
+      "optical_upper_ns": null
+    }
+  ]
+}

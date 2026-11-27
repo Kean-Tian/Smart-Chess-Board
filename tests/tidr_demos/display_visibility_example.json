@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "window": "display-overview",
+  "session": "REPLACE_WITH_ACTUAL_OBSERVER_SESSION",
+  "reviewer": "REPLACE_WITH_OPERATOR_AND_TA",
+  "measurement_kind": "physical_touchscreen",
+  "synchronized": false,
+  "timebase": "pi_monotonic_ns",
+  "method": "REPLACE_WITH_ACTUAL_VIDEO_TO_PI_MONOTONIC_CALIBRATION_AND_UNCERTAINTY_METHOD",
+  "uncertainty_ns": null,
+  "video_sha256": "REPLACE_WITH_HASH_FROM_ACTUAL_VIDEO_ATTACHMENT",
+  "observations": [
+    {
+      "backend_token": "REPLACE_WITH_ACTUAL_GameSession.start_TOKEN",
+      "field": "players",
+      "correct": null,
+      "observed_text": "REPLACE_WITH_BOTH_ACTUAL_VISIBLE_PLAYER_NAMES",
+      "visible_lower_ns": null,
+      "visible_upper_ns": null,
+      "frame_reference": "REPLACE_WITH_VIDEO_FRAME_OR_PTS_AND_SCREEN_REGION"
+    }
+  ]
+}
