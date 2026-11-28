@@ -28,12 +28,12 @@ After source changes, rerun setup.sh when backend/dependencies changed. For C-on
 1. In **Players**, create saved profiles. PvP and Coaching require two different players; PvC needs one human profile.
 2. Close any serial terminal using the board. Connect SCB Master PCB V3 (ESP32-S3) to the Pi using a data USB cable and the tested sensor wiring/power supply.
 3. Open **New game**. Choose mode, assign actual players, select the human side for PvC, and choose 5 minutes, 10 minutes or no clock. In With coaching, White and Black must each explicitly choose AI coaching ON or OFF; all four combinations, including both OFF, are allowed.
-4. Open **Set up the board**. Select the USB serial port at the top and press **Connect board**. The main-menu **Board test** page can also connect the same board.
+4. Open **Set up the board**. Select the USB serial port at the top and press **Connect board**. The main-menu **Board test → Sensor Test** page can also connect the same board.
 5. Arrange the standard starting position and press **Check position**. A fresh matching full-board occupancy frame is required.
 6. Confirm the actual piece types and colors, then press **Start game**. Hall occupancy cannot identify piece types. Firmware coordinates are used unchanged; verify physical mapping before gameplay.
 7. Play on the physical board. A move advances the game only after legality and matching occupancy checks; accepted moves and clocks are saved transactionally.
 
-The main-menu **Board test** opens a live 64-square occupancy viewer with fixed firmware coordinates. `O` means occupied, a blank means empty, and `?` means unavailable. Tap a square to see its coordinate and state. Red borders identify differences from the current logical position, when one exists. Diagnostic display orientation is separate from firmware and game coordinates.
+The main-menu **Board test → Sensor Test** opens the existing live 64-square occupancy viewer with fixed firmware coordinates. `O` means occupied, a blank means empty, and `?` means unavailable. Tap a square to see its coordinate and state. Red borders identify differences from the current logical position, when one exists. Diagnostic display orientation is separate from firmware and game coordinates.
 
 **Scan now** requests SCAN, STATUS and TIMING through the existing USB owner. It displays the MCU-reported full-board period/debounce interval and the separately measured USB SCAN round trip. Timing is unavailable until reported by the connected firmware; it is never replaced by a preset value. SCAN returns the firmware's latest debounced snapshot, not a guaranteed newly acquired frame. The board grid updates from sensor reports while the game continues; viewing the page does not reset or edit the game. It does not control LEDs, motors or the magnet.
 
@@ -43,7 +43,7 @@ Manual execution remains the default. In computer mode, open **Computer move / i
 
 For a separately calibrated and hardware-verified mechanism, launch the service with `SCB_AUTOMATIC_MOTION=1` to expose **Execute automatically** for simple computer moves only. It requires a valid origin/steps declaration, then sends GOTO and MOVE through the existing MCU interface. Human moves are blocked until both DONE and a newly requested matching SNAPSHOT arrive. A mismatch, interruption or fault pauses the game without recording the computer move. No automatic capture, collision avoidance, CoreXY conversion or homing is supplied by this interface; these need separate hardware/motion integration. Tests use simulated actuators only.
 
-Faults survive USB reconnection. Resolve the physical cause, then use **Board test → Reset fault**. The service checks safe idle outputs, a cleared MCU fault latch and fresh matching occupancy. Reset does not resume play; press **Resume** separately. It invalidates the carriage reference, which must be declared again before another automatic move. Firmware without SNAPSHOT/CLEAR_FAULT support cannot pass reset/resume verification.
+Faults survive USB reconnection. Resolve the physical cause, then use **Board test → Sensor Test → Reset fault**. The service checks safe idle outputs, a cleared MCU fault latch and fresh matching occupancy. Reset does not resume play; press **Resume** separately. It invalidates the carriage reference, which must be declared again before another automatic move. Firmware without SNAPSHOT/CLEAR_FAULT support cannot pass reset/resume verification.
 
 The service sends `GUIDE` for all legal destination squares, `MARK ... LEGAL` for blue source/green destination and `MARK ... ILLEGAL` for red source/destination. Illegal feedback remains until accepted-position restoration. Turning guidance off does not clear an illegal warning. Preparation and game completion send LED_CLEAR; periodic scans do not clear accepted feedback. LED ACK means queued output, so the 500 ms physical illumination target still needs measurement on the assembled board.
 
@@ -154,3 +154,7 @@ UI AI requests run in a separate worker, with an 8-second HTTP timeout, one atte
 The diagnostic display uses the final alignment patches supplied for the Pi Terminal: fixed rotation, vertical correction and four-corner diagonal correction. The rotation control is hidden. Columns are a-h from left to right; rows are 1-8 from top to bottom. Tapping a cell shows both its PCB display coordinate and the original Sensor coordinate. Firmware masks, LED addressing and game/replay coordinates are unchanged.
 
 This version reconstructs those supplied patches; the Pi was unreachable when committing it. Software tests check the mapping, but the final physical alignment must still be verified on the Pi using all four corners and interior squares.
+
+## Integrated LED diagnostics (TIDR #40 / #41)
+
+**Board test** now opens **Sensor Test** and **LED Test**. Sensor Test retains its existing PCB mapping and live updates. LED Test offers Automatic RGB, independent Manual LEDs and externally measured Current Limit patterns, through the same connection. End active/paused games before entry. See [LED_DIAGNOSTICS.md](LED_DIAGNOSTICS.md) for build commands, touchscreen-only TA procedures, measurement limits, cleanup and scoped rollback. RGB values remain capped at 32/255; no firmware or database-schema changes are included.

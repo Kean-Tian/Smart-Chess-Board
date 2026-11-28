@@ -22,6 +22,7 @@ from game_store import GameStore
 from scb_link import ScbLink, DeviceError
 from ui_game import GameSession
 from ui_hardware import execute_motion, reset_fault, stopped_status, fresh_snapshot
+from led_diagnostics import LedDiagnostics
 
 
 def socket_path():
@@ -57,6 +58,7 @@ class UiCore:
         self.job_kind = None
         self.motion_io = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scb-motion")
         self.led_io = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scb-led")
+        self.led_diagnostics = LedDiagnostics(self.led_io, now)
         self.stop_io = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scb-stop")
         self.stop_job = None
         self.motion_job = self.led_job = None
@@ -91,6 +93,7 @@ class UiCore:
 
     def latch_fault(self, reason):
         self.fault = str(reason)
+        self.led_diagnostics.stop(exit_mode=True)
         self.check_after = None
         self.session.ready = False
         self.stop_motion()
@@ -108,6 +111,8 @@ class UiCore:
             except Exception as exc:
                 if context[0] is self.link:
                     self.latch_fault(f"LED feedback failed: {exc}")
+        if self.led_diagnostics.owned:
+            return  # Drain previous normal feedback, but never compete with diagnostic ownership.
         desired = self.session.feedback_command
         if self.link and not self.led_job and desired != self.led_sent and not self.fault:
             link = self.link
@@ -124,6 +129,10 @@ class UiCore:
     def handle(self, request):
         # 接收 UI 的 JSON 命令，分发给棋盘连接或游戏状态模块。
         cmd = request.get("cmd")
+        if isinstance(cmd, str) and cmd.startswith("led_diag_"):
+            return self.handle_led_diagnostic(request)
+        if self.led_diagnostics.owned and cmd in {"prepare", "start", "resume", "execute_computer", "commit", "confirm_computer"}:
+            raise ValueError("Exit LED diagnostics and wait for an acknowledged clear before gameplay")
         self.session.tick_clock_only()
         self.notice = ""
         if cmd == "connect":
@@ -251,6 +260,36 @@ class UiCore:
             return self.store.review(request.get("game_id"), request.get("ply", 0))
         elif cmd not in {"state", "ports"}:
             raise ValueError("Unknown UI command")
+        return None
+
+    def handle_led_diagnostic(self, request):
+        """Diagnostic namespace: no GameSession mutator, clock tick or store write."""
+        cmd = request.get("cmd")
+        diagnostic = self.led_diagnostics
+        if cmd in {"led_diag_exit", "led_diag_stop", "led_diag_clear"}:
+            diagnostic.stop(exit_mode=cmd == "led_diag_exit")
+            return None
+        if (self.session.active or self.session.paused or self.motion_job or self.session.motion_active
+                or self.stop_job or self.fault):
+            raise ValueError("LED diagnostics unavailable: end the game and resolve board faults first")
+        if not self.link:
+            raise ValueError("Connect the board in Sensor Test first")
+        if cmd == "led_diag_enter":
+            diagnostic.enter(request.get("mode"), self.link)
+        elif cmd in {"led_diag_start", "led_diag_restart"}:
+            if not diagnostic.owned:
+                diagnostic.enter("auto", self.link)
+            diagnostic.start()
+        elif cmd == "led_diag_pause":
+            diagnostic.pause()
+        elif cmd == "led_diag_resume":
+            diagnostic.resume()
+        elif cmd == "led_diag_manual":
+            diagnostic.manual(request.get("square"), request.get("color"))
+        elif cmd == "led_diag_pattern":
+            diagnostic.load(request.get("pattern"))
+        else:
+            raise ValueError("Unknown LED diagnostic command")
         return None
 
     def poll_board(self, diagnostics=False):
@@ -404,6 +443,7 @@ class UiCore:
         if self.session.active and not self.session.paused:
             self.session.maybe_search()
         self.feedback_update()
+        self.led_diagnostics.update(self.link, normal_busy=self.led_job is not None)
 
     def state(self):
         # 诊断页面复用同一串口，不另开连接，也不会驱动电机或修改局面。
@@ -419,6 +459,7 @@ class UiCore:
                       "motion_busy": self.motion_job is not None,
                       "led_feedback_pending": self.led_job is not None,
                       "engine_error": self.session.hint_error})
+        state["led_diagnostics"] = self.led_diagnostics.state()
         expected = None
         if self.session.game:
             from board_game import occupancy, fen_board
@@ -431,6 +472,7 @@ class UiCore:
         return state
 
     def controller_lost(self):
+        self.led_diagnostics.stop(exit_mode=True)
         if self.session.motion_active:
             self.latch_fault("UI disconnected during motion")
         if self.session.active and not self.session.paused:
@@ -439,6 +481,15 @@ class UiCore:
 
     def close(self):
         self.stop_motion()
+        diagnostic_owned = self.led_diagnostics.owned
+        if diagnostic_owned and self.led_job is not None:
+            try:
+                self.led_job.result()  # Drain older normal feedback before the final diagnostic clear.
+            except Exception:
+                pass
+        self.led_diagnostics.close(self.link)
+        if diagnostic_owned:
+            print("LED diagnostics: " + self.led_diagnostics.message, flush=True)
         self.motion_io.shutdown(wait=True, cancel_futures=True)
         self.stop_io.shutdown(wait=True, cancel_futures=True)
         self.led_io.shutdown(wait=True, cancel_futures=True)

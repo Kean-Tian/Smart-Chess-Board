@@ -145,7 +145,7 @@ static bool test_window_input(SDL_Window *window, SDL_Renderer *renderer, lv_ind
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board") ||
                !test_pointer_click(window, renderer, input, 192, 666, touch != 0, "History is not loaded") ||
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board") ||
-               !test_pointer_click(window, renderer, input, 528, 666, touch != 0, "Board / Sensor Test") ||
+               !test_pointer_click(window, renderer, input, 528, 666, touch != 0, "Board Test") ||
                !test_pointer_click(window, renderer, input, 72, 128, touch != 0, "Smart Chess Board")) return false;
         }
     }

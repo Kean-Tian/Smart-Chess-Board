@@ -23,7 +23,9 @@ typedef enum {
     A_USE_PLAYER, A_PREPARE, A_CHECK, A_VERIFIED, A_START, A_PAUSE, A_END,
     A_CONFIRM_END, A_HINT, A_CONFIRM_MOVE, A_PROMOTE, A_CONNECT,
     A_HISTORY_PAGE, A_REVIEW, A_REVIEW_STEP, A_GUIDANCE, A_SCAN, A_SQUARE, A_CONFIRM_COMPUTER, A_COACH, A_COACH_RETRY,
-    A_RESET_FAULT, A_EXECUTE_COMPUTER, A_ROTATE_DIAGNOSTICS, A_QUIT
+    A_RESET_FAULT, A_EXECUTE_COMPUTER, A_ROTATE_DIAGNOSTICS, A_QUIT,
+    A_LED_OPEN, A_LED_START, A_LED_PAUSE, A_LED_RESUME, A_LED_STOP, A_LED_RESTART,
+    A_LED_COLOR, A_LED_SQUARE, A_LED_CLEAR, A_LED_PATTERN
 } Action;
 typedef struct {
     lv_obj_t *obj;
@@ -42,7 +44,7 @@ static bool quit_requested;
 static int64_t editing_id, deleting_id;
 static lv_obj_t *name_input, *form_error;
 static char database_path[4096];
-static const char *screen_names[] = {"home", "setup", "profiles", "history", "player-editor", "board-setup", "game", "review", "move-editor", "diagnostics", "instructions", "coaching"};
+static const char *screen_names[] = {"home", "setup", "profiles", "history", "player-editor", "board-setup", "game", "review", "move-editor", "diagnostics", "instructions", "coaching", "board-test", "led-test", "led-auto", "led-manual", "led-current"};
 static const char *mode_codes[] = {"pvp", "pvc", "coach"};
 static const char *mode_titles[] = {"Two players", "Vs computer", "With coaching"};
 static UiBridge bridge;
@@ -68,6 +70,8 @@ static char local_notice[256], port_options[1600];
 static unsigned last_changes;
 static uint32_t last_live_refresh;
 static bool end_dialog_open;
+static int led_color_choice, led_pending_screen = -1;
+static lv_obj_t *led_tiles[64], *led_summary, *led_message, *led_controls[8], *led_entry[3];
 static bool service_online(void);
 static bool state_flag(const char *path);
 static void refresh_live(void);
@@ -182,7 +186,9 @@ static void shell(const char *title, const char *subtitle) {
         /* 回放可能从不同页面进入，返回时使用记住的来源。 */
         UiScreen back = current == UI_PLAYER_EDITOR ? UI_PROFILES :
             current == UI_REVIEW ? (UiScreen)config.review_return : (current == UI_MOVE_EDITOR || current == UI_INSTRUCTIONS || current == UI_COACHING) ? UI_GAME :
-            current == UI_BOARD_SETUP ? (config.reconnecting ? UI_GAME : UI_SETUP) : UI_HOME;
+            current == UI_BOARD_SETUP ? (config.reconnecting ? UI_GAME : UI_SETUP) :
+            current == UI_DIAGNOSTICS || current == UI_LED_TEST ? UI_BOARD_TEST :
+            current == UI_LED_AUTO || current == UI_LED_MANUAL || current == UI_LED_CURRENT ? UI_LED_TEST : UI_HOME;
         button(root(), LV_SYMBOL_LEFT, 32, 88, 80, 80, false, "back", A_NAV, back, screen_names[back]);
     }
     title_label = text(root(), title, current == UI_HOME ? 32 : 136, 104, current == UI_HOME ? 656 : 552, 40, INK);
@@ -206,7 +212,7 @@ static void home(void) {
     feature("New game", "Two players, computer\nor AI coaching", LV_SYMBOL_PLAY, 32, 280, "new-game", UI_SETUP, true);
     feature("Players", "Create, select and\nmanage saved players", LV_SYMBOL_DIRECTORY, 368, 280, "players", UI_PROFILES, false);
     feature("History", "Recorded results\nand move-by-move review", LV_SYMBOL_LIST, 32, 544, "history", UI_HISTORY, false);
-    feature("Board test", "Live sensor occupancy\nand board connection", LV_SYMBOL_SETTINGS, 368, 544, "diagnostics", UI_DIAGNOSTICS, false);
+    feature("Board test", "Sensor view and\nisolated LED diagnostics", LV_SYMBOL_SETTINGS, 368, 544, "diagnostics", UI_BOARD_TEST, false);
     lv_obj_t *card = box(root(), 32, 836, 656, 144, PAPER, 24);
     text(card, "SELECTED PLAYER", 24, 22, 608, 20, MUTED);
     clipped_text(card, !data_ok ? "Database unavailable" : selected.id ? selected.name : "No player selected", 24, 68, 608, 32, INK);
@@ -580,6 +586,8 @@ static void diagnostics(void) {
     lv_obj_set_height(status_label, 48);
     lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
 }
+#include "led_test_ui.inc"
+
 static void coaching_page(void) {
     shell("AI coaching", "Optional online advice / each player decides independently.");
     for(int i = 0; i < 2; ++i) {
@@ -951,6 +959,7 @@ static void refresh_live(void) {
         disable(automatic_button, !online || !active || paused || !state_flag("$.synced") || state_flag("$.motion_busy") || state_flag("$.usb_busy"));
         if(!wanted[0] && online && !error[0]) snprintf(message, sizeof(message), "No computer move pending. Return to the game.");
     }
+    if(current == UI_BOARD_TEST || current == UI_LED_TEST || is_led_page(current)) refresh_led_page();
     if(current == UI_REVIEW && error[0]) label_value(review_move, error);
     char board_fault[256];
     if((current == UI_BOARD_SETUP || current == UI_GAME || current == UI_DIAGNOSTICS || current == UI_INSTRUCTIONS) && ui_json_text(&bridge, bridge.state, "$.fault", board_fault, sizeof(board_fault)) && board_fault[0])
@@ -1065,6 +1074,30 @@ static void click(lv_event_t *event) {
             /* Fixed PCB view: rotation is disabled. */
             scb_ui_show(UI_DIAGNOSTICS);
             break;
+        case A_LED_OPEN: {
+            const char *modes[] = {"auto", "manual", "current"};
+            if(command("{\"cmd\":\"led_diag_enter\",\"mode\":\"%s\"}", modes[hit.value]))
+                scb_ui_show((UiScreen)(UI_LED_AUTO + hit.value));
+            break;
+        }
+        case A_LED_START: command("{\"cmd\":\"led_diag_start\"}"); break;
+        case A_LED_PAUSE: command("{\"cmd\":\"led_diag_pause\"}"); break;
+        case A_LED_RESUME: command("{\"cmd\":\"led_diag_resume\"}"); break;
+        case A_LED_STOP: command("{\"cmd\":\"led_diag_stop\"}"); break;
+        case A_LED_RESTART: command("{\"cmd\":\"led_diag_restart\"}"); break;
+        case A_LED_CLEAR: command("{\"cmd\":\"led_diag_clear\"}"); break;
+        case A_LED_COLOR: led_color_choice = (int)hit.value; refresh_led_page(); break;
+        case A_LED_SQUARE: {
+            char square[3] = {(char)('a'+hit.value%8), (char)('1'+hit.value/8), 0};
+            const char *colors[] = {"red", "green", "blue", "white", "off"};
+            command("{\"cmd\":\"led_diag_manual\",\"square\":\"%s\",\"color\":\"%s\"}", square, colors[led_color_choice]);
+            break;
+        }
+        case A_LED_PATTERN: {
+            const char *patterns[] = {"maximum", "red", "green", "blue", "white", "transition"};
+            command("{\"cmd\":\"led_diag_pattern\",\"pattern\":\"%s\"}", patterns[hit.value]);
+            break;
+        }
         case A_CONFIRM_COMPUTER: {
             char move[8];
             if(ui_json_text(&bridge, bridge.state, "$.computer_move", move, sizeof(move)))
@@ -1113,6 +1146,17 @@ static void click(lv_event_t *event) {
 }
 void scb_ui_show(UiScreen screen) {
     /* 页面编号相当于路由，决定调用哪个页面创建函数。 */
+    if(is_led_page(current) && screen != current) {
+        char phase[32];
+        ui_json_text(&bridge, bridge.state, "$.led_diagnostics.phase", phase, sizeof(phase));
+        if(led_pending_screen < 0) command("{\"cmd\":\"led_diag_exit\"}");
+        if(state_flag("$.led_diagnostics.owned") && strcmp(phase, "disconnected") && strcmp(phase, "error")) {
+            led_pending_screen = (int)screen;
+            return; /* Keep this page until the final clear is acknowledged. */
+        }
+        /* Disconnected/error mode has no sequence timer. Allow access to Sensor
+         * Test for reconnection; backend ownership still blocks gameplay. */
+    }
     current = screen;
     switch(screen) {
         case UI_HOME: home(); break;
@@ -1127,6 +1171,9 @@ void scb_ui_show(UiScreen screen) {
         case UI_DIAGNOSTICS: diagnostics(); break;
         case UI_INSTRUCTIONS: instructions(); break;
         case UI_COACHING: coaching_page(); break;
+        case UI_BOARD_TEST: board_test_menu(); break;
+        case UI_LED_TEST: led_test_menu(); break;
+        case UI_LED_AUTO: case UI_LED_MANUAL: case UI_LED_CURRENT: led_test_page(); break;
         default: break;
     }
     refresh_live();
@@ -1136,6 +1183,8 @@ void scb_ui_init(const char *path) {
     /* 打开玩家库、初始化本机通信，再显示首页。 */
     page_offset = 0;
     quit_requested = false;
+    led_color_choice = 0;
+    led_pending_screen = -1;
     editing_id = deleting_id = 0;
     memset(&config, 0, sizeof(config));
     config.minutes = 10;
@@ -1149,7 +1198,13 @@ void scb_ui_init(const char *path) {
     ui_bridge_init(&bridge, getenv("SCB_UI_TEST_MODE") != NULL);
     scb_ui_show(UI_HOME);
 }
-void scb_ui_shutdown(void) { ui_bridge_close(&bridge); player_store_close(&store); }
+void scb_ui_shutdown(void) {
+    if(state_flag("$.led_diagnostics.owned")) {
+        ui_bridge_send(&bridge, "{\"cmd\":\"led_diag_exit\"}");
+        ui_bridge_poll(&bridge, lv_tick_get());
+    }
+    ui_bridge_close(&bridge); player_store_close(&store);
+}
 bool scb_ui_quit_requested(void) { return quit_requested; }
 void scb_ui_preview_setup(int mode) {
     /* 仅供离线版式渲染，不向后台发送设置。 */
@@ -1167,6 +1222,16 @@ void scb_ui_submit(void) { save_player(); }
 void scb_ui_tick(void) {
     /* 主循环反复调用：收后台消息，按结果跳转并更新实时显示。 */
     last_changes = ui_bridge_poll(&bridge, lv_tick_get());
+    if(led_pending_screen >= 0) {
+        char phase[32];
+        ui_json_text(&bridge, bridge.state, "$.led_diagnostics.phase", phase, sizeof(phase));
+        if(!state_flag("$.led_diagnostics.owned") || !service_online() ||
+           !strcmp(phase, "disconnected") || !strcmp(phase, "error")) {
+            UiScreen target = (UiScreen)led_pending_screen;
+            led_pending_screen = -1;
+            scb_ui_show(target);
+        }
+    }
     if((last_changes & SCB_BRIDGE_HISTORY) && current == UI_HISTORY) scb_ui_show(UI_HISTORY);
     if((last_changes & SCB_BRIDGE_REVIEW) && current == UI_REVIEW) {
         config.review_pending = false;
@@ -1233,7 +1298,7 @@ static bool label_bounds(lv_obj_t *parent) {
 bool scb_ui_smoke_test(void) {
     /* The host supplies an isolated temporary database for this test. */
     if(!data_ok || player_count || selected.id) return false;
-    if(!press("diagnostics") || current != UI_DIAGNOSTICS || config.diagnostic_rotation != 3) return false;
+    if(!press("diagnostics") || current != UI_BOARD_TEST || !press("sensor-test") || current != UI_DIAGNOSTICS || config.diagnostic_rotation != 3) return false;
     const int corners[4][4] = {{7,63,0,56}, {63,56,7,0}, {56,0,63,7}, {0,7,56,63}};
     for(int turn = 0; turn < 4; ++turn) {
         int rotation = config.diagnostic_rotation;
@@ -1254,7 +1319,7 @@ bool scb_ui_smoke_test(void) {
         if(config.selected_square != corners[rotation][0] || !label_bounds(root())) return false;
         if(!press("rotate-board")) return false;
     }
-    if(config.diagnostic_rotation != 3 || !press("back") || current != UI_HOME) return false;
+    if(config.diagnostic_rotation != 3 || !press("back") || current != UI_BOARD_TEST || !press("back") || current != UI_HOME) return false;
     if(!press("new-game") || current != UI_SETUP) return false;
     if(!press("mode-computer") || config.mode != 1) return false;
     for(unsigned i = 0; i < hit_count; ++i) if(hits[i].action == A_GUIDANCE) return false;
@@ -1316,6 +1381,21 @@ bool scb_ui_smoke_test(void) {
         lv_refr_now(NULL);
         if(!label_bounds(root())) return false;
     }
+    /* Diagnostic page guards and logical board corners, software fixture only. */
+    scb_ui_show(UI_LED_TEST);
+    for(int i=0; i<3; ++i) if(!lv_obj_has_state(led_entry[i], LV_STATE_DISABLED)) return false;
+    snprintf(bridge.state, sizeof(bridge.state), "{\"board_connected\":true,\"led_diagnostics\":{\"owned\":false}}");
+    bridge.last_state = lv_tick_get();
+    scb_ui_show(UI_LED_MANUAL);
+    for(int row=0; row<8; ++row) for(int col=0; col<8; ++col) {
+        int index=(7-row)*8+col;
+        if(lv_obj_get_x(led_tiles[index]) != 112+col*62 || lv_obj_get_y(led_tiles[index]) != 400+row*62) return false;
+        char square[3]={(char)('a'+col),(char)('8'-row),0};
+        if(strcmp(lv_label_get_text(lv_obj_get_child(led_tiles[index],0)), square)) return false;
+    }
+    scb_ui_show(UI_LED_TEST);
+    for(int i=0; i<3; ++i) if(lv_obj_has_state(led_entry[i], LV_STATE_DISABLED)) return false;
+    if(!press("back") || current != UI_BOARD_TEST || !press("back") || current != UI_HOME) return false;
     puts("PASS: SQLite player creation, validation, rename, reopen, selection, delete confirmation and page bounds.");
     return true;
 }
@@ -1354,7 +1434,7 @@ bool scb_ui_service_test(void) {
     if(!press("back") || current != UI_GAME) return false;
     if(!press("pause") || !wait_json(bridge.state, "$.paused", "1")) return false;
     /* 棋盘测试复用串口；进入、扫描和返回不更改已接受的对局。 */
-    if(!press("back") || !press("diagnostics") || current != UI_DIAGNOSTICS) return false;
+    if(!press("back") || !press("diagnostics") || !press("sensor-test") || current != UI_DIAGNOSTICS) return false;
     if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("scan-board")) return false;
     if(!wait_json(bridge.state, "$.scan_timing.frame_us", "10000")) return false;
     if(strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[28], 0)), "O")) return false;
@@ -1365,7 +1445,7 @@ bool scb_ui_service_test(void) {
            strcmp(lv_label_get_text(lv_obj_get_child(sensor_tiles[12], 0)), "")) return false;
     }
     if(config.diagnostic_rotation != 3) return false;
-    if(!press("back") || !press("continue-game") || current != UI_GAME || !state_flag("$.paused")) return false;
+    if(!press("back") || !press("back") || !press("continue-game") || current != UI_GAME || !state_flag("$.paused")) return false;
     if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "1")) return false;
     if(!press("game-guidance") || !wait_json(bridge.state, "$.guidance", "0")) return false;
     /* 已开始的对局仍可通过连接入口断开并重新连接，不重置时钟。 */
@@ -1375,7 +1455,7 @@ bool scb_ui_service_test(void) {
     if(!press("connect-board") || !wait_json(bridge.state, "$.board_known", "1")) return false;
     if(!press("return-game") || current != UI_GAME || !state_flag("$.paused")) return false;
     /* Reconnection is not fault recovery: reset must be explicitly verified. */
-    if(!press("back") || !press("diagnostics")) return false;
+    if(!press("back") || !press("diagnostics") || !press("sensor-test")) return false;
     if(!wait_json(bridge.state, "$.usb_busy", "0") || !press("reset-fault")) return false;
     if(!wait_json(bridge.state, "$.fault", "") || !state_flag("$.paused")) return false;
     if(!press("sensor-game") || current != UI_GAME) return false;
@@ -1387,6 +1467,38 @@ bool scb_ui_service_test(void) {
     if(!press("next-move") || !wait_json(bridge.review, "$.move", "e2e4")) return false;
     if(!press("previous-move") || !wait_json(bridge.review, "$.ply", "0")) return false;
     if(!press("back") || current != UI_HISTORY || !press("back") || current != UI_HOME) return false;
+    /* Exercise the real diagnostic socket path after ending the test game. */
+    if(!press("diagnostics") || !press("led-test") || current != UI_LED_TEST) return false;
+    if(!press("led-manual") || !wait_json(bridge.state, "$.led_diagnostics.known", "1") || current != UI_LED_MANUAL) return false;
+    for(unsigned i=0; i<hit_count; ++i) if(hits[i].action == A_LED_COLOR && hits[i].value == 1)
+        lv_obj_send_event(hits[i].obj, LV_EVENT_CLICKED, NULL);
+    if(led_color_choice != 1) return false;
+    lv_obj_send_event(led_tiles[28], LV_EVENT_CLICKED, NULL);
+    if(!wait_json(bridge.state, "$.led_diagnostics.active_leds", "1")) return false;
+    char pixels[80];
+    ui_json_text(&bridge, bridge.state, "$.led_diagnostics.pixels", pixels, sizeof(pixels));
+    if(strlen(pixels)!=64 || pixels[28]!='G') return false;
+    if(!press("led-clear") || !wait_json(bridge.state, "$.led_diagnostics.active_leds", "0")) return false;
+    if(!press("back") || !wait_json(bridge.state, "$.led_diagnostics.owned", "0")) return false;
+    scb_ui_tick();
+    if(current != UI_LED_TEST || !press("led-auto")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.phase", "idle") || !press("led-start")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.running", "1") || !press("led-pause")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.paused", "1") || !press("led-resume")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.paused", "0") || !press("led-stop")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.phase", "idle") || !press("back")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.owned", "0")) return false;
+    scb_ui_tick();
+    if(current != UI_LED_TEST || !press("led-current")) return false;
+    if(!wait_json(bridge.state, "$.led_diagnostics.phase", "idle")) return false;
+    for(unsigned i=0; i<hit_count; ++i) if(hits[i].action == A_LED_PATTERN && hits[i].value == 0)
+        lv_obj_send_event(hits[i].obj, LV_EVENT_CLICKED, NULL);
+    if(!wait_json(bridge.state, "$.led_diagnostics.active_leds", "64")) return false;
+    if(!press("led-stop") || !wait_json(bridge.state, "$.led_diagnostics.phase", "idle")) return false;
+    if(!press("back") || !wait_json(bridge.state, "$.led_diagnostics.owned", "0")) return false;
+    scb_ui_tick();
+    if(current != UI_LED_TEST) return false;
+    puts("PASS: native LED navigation, manual selection, auto controls, capped full load and acknowledged exit (emulated MCU only).");
     puts("PASS: native UI -> Unix socket -> real rules/SQLite -> emulated serial -> accepted move -> saved replay.");
     return true;
 }
